@@ -2,8 +2,10 @@ $(document).ready(function () {
 
     // ---- Frosted nav on scroll ----
     const $nav = $('.site-nav');
-    window.addEventListener('scroll', function () {
-        $nav.toggleClass('nav-scrolled', window.scrollY > 48);
+    const mainContent = document.querySelector('.main-content');
+    (mainContent || window).addEventListener('scroll', function () {
+        const scrollTop = mainContent ? mainContent.scrollTop : window.scrollY;
+        $nav.toggleClass('nav-scrolled', scrollTop > 48);
     }, { passive: true });
 
     // ---- Dark mode ----

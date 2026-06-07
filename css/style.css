@@ -81,7 +81,12 @@ body,
 .inv-tag,
 .inv-row,
 .badge-company,
-.badge-individual {
+.badge-individual,
+.doc-header,
+.doc-title-input,
+.doc-toolbar-sticky,
+.doc-page,
+.btn-secondary {
     transition:
         background-color 0.2s ease,
         color            0.2s ease,
@@ -312,8 +317,10 @@ body,
     padding-bottom: 0.3rem;
 }
 
-/* App layout — normal page scroll; sidebar is sticky */
+/* App layout — viewport-filling; only .main-content scrolls */
+html { height: 100%; }
 body {
+    height: 100%;
     display: flex;
     flex-direction: column;
     background-color: #f7f6f4;
@@ -324,19 +331,23 @@ body {
 }
 .app-layout {
     display: flex;
-    align-items: flex-start;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .main-content {
     flex: 1;
     min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
 }
 
 /* Sidebar */
 .sidebar {
-    position: sticky;
-    top: 0;
-    height: 100vh;
+    position: relative;
+    height: 100%;
     width: 15rem;
     flex-shrink: 0;
     background: #ffffff;
@@ -396,7 +407,9 @@ body {
     flex-direction: column;
     padding: 0 0.5rem;
     gap: 0.25rem;
-    overflow: hidden;
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .sidebar-btn {
@@ -815,3 +828,822 @@ body.modal-open {
 [data-theme="dark"] .modal-close:hover { color: #9898a6; background: #2b2b31; }
 [data-theme="dark"] .modal-back        { color: #505059; }
 [data-theme="dark"] .modal-back:hover  { color: #9898a6; background: #2b2b31; }
+
+/* ================================================
+   ТИПСКИ ДОКУМЕНТИ — secondary button
+   ================================================ */
+.btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    padding: 0.5rem 0.875rem;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: #78716c;
+    border: 1px solid #d9d2c7;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-family: inherit;
+    letter-spacing: 0.01em;
+}
+.btn-secondary:hover    { background: #f0efed; border-color: #bfb9b2; color: #1c1917; }
+.btn-secondary.is-active { background: #e2dfdb; border-color: #bfb9b2; color: #1c1917; }
+
+/* ================================================
+   DOCUMENT EDITOR — layout & A4 page
+   ================================================ */
+
+/* Document header bar (title + action buttons) */
+.doc-header {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.75rem 1.25rem;
+    background: #ffffff;
+    border-bottom: 1px solid #e8e4de;
+}
+
+.doc-title-input {
+    flex: 1;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    padding: 0.375rem 0.625rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1c1917;
+    font-family: inherit;
+    outline: none;
+    min-width: 0;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+.doc-title-input::placeholder { color: #c4bbae; font-weight: 400; }
+.doc-title-input:hover  { background: #f0efed; border-color: #e8e4de; }
+.doc-title-input:focus  { background: #f0efed; border-color: #d6d0ca; }
+
+/* Sticky Quill toolbar */
+.doc-toolbar-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: #ffffff;
+    border-bottom: 1px solid #e8e4de;
+    box-shadow: 0 1px 4px rgba(28, 25, 23, 0.05);
+}
+
+/* Override Quill Snow toolbar so it merges into our sticky bar */
+.doc-toolbar-sticky .ql-toolbar.ql-snow {
+    border: none;
+    padding: 0.4rem 1rem;
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    flex-wrap: wrap;
+}
+.doc-toolbar-sticky .ql-toolbar.ql-snow .ql-formats {
+    margin-right: 0.625rem;
+}
+.doc-toolbar-sticky .ql-snow .ql-picker-label,
+.doc-toolbar-sticky .ql-snow button {
+    color: #78716c;
+}
+.doc-toolbar-sticky .ql-snow .ql-stroke { stroke: #78716c; }
+.doc-toolbar-sticky .ql-snow .ql-fill   { fill: #78716c; }
+.doc-toolbar-sticky .ql-snow button:hover,
+.doc-toolbar-sticky .ql-snow .ql-picker-label:hover {
+    color: #1c1917;
+}
+.doc-toolbar-sticky .ql-snow button:hover .ql-stroke,
+.doc-toolbar-sticky .ql-snow .ql-picker-label:hover .ql-stroke { stroke: #1c1917; }
+.doc-toolbar-sticky .ql-snow button:hover .ql-fill,
+.doc-toolbar-sticky .ql-snow .ql-picker-label:hover .ql-fill   { fill: #1c1917; }
+.doc-toolbar-sticky .ql-snow button.ql-active,
+.doc-toolbar-sticky .ql-snow .ql-picker-label.ql-active {
+    color: #1c1917;
+}
+.doc-toolbar-sticky .ql-snow button.ql-active .ql-stroke { stroke: #1c1917; }
+.doc-toolbar-sticky .ql-snow button.ql-active .ql-fill   { fill: #1c1917; }
+.doc-toolbar-sticky .ql-snow .ql-picker-options {
+    border-color: #d9d2c7;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px rgba(28, 25, 23, 0.1);
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Gray background behind the A4 sheets */
+.doc-page-wrap {
+    background: #e8e4de;
+    min-height: calc(100vh - 7rem);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 0 3rem;
+}
+
+/* Container that stacks pages with a gap */
+#pagesContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+    padding: 2.5rem 1.5rem 0;
+    width: 100%;
+}
+
+/* The A4 white sheet */
+.doc-page {
+    background: #ffffff;
+    width: 21cm;
+    min-height: 29.7cm;
+    box-shadow: 0 2px 12px rgba(28, 25, 23, 0.12), 0 8px 32px rgba(28, 25, 23, 0.08);
+    border-radius: 2px;
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header zone — above body / split line */
+.doc-page-header {
+    padding: 2.5cm 3cm 0.5cm;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+/* Body zone — Quill editors live here; split line only spans this area */
+.doc-page-body {
+    flex: 1;
+    padding: 0 3cm;
+    position: relative;
+    min-height: 20cm;
+}
+
+/* Footer zone — below body / split line */
+.doc-page-footer {
+    padding: 0.5cm 3cm 2.5cm;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+/* Contenteditable header / footer fields */
+.page-header-editor,
+.page-footer-editor {
+    min-height: 1.4em;
+    font-family: 'Times New Roman', Times, Georgia, serif;
+    font-size: 11pt;
+    color: #1c1917;
+    outline: none;
+    text-align: center;
+    cursor: text;
+    border-radius: 0.25rem;
+    padding: 0.2em 0.4em;
+    transition: background-color 0.15s;
+}
+.page-header-editor:hover,
+.page-footer-editor:hover { background: rgba(28,25,23,0.03); }
+.page-header-editor:focus,
+.page-footer-editor:focus { background: rgba(28,25,23,0.04); }
+.page-header-editor:empty::before,
+.page-footer-editor:empty::before {
+    content: attr(data-placeholder);
+    color: #c4bbae;
+    font-style: italic;
+    pointer-events: none;
+}
+
+/* Add page button */
+.doc-add-page-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 1.75rem;
+    padding: 0.6rem 1.25rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #a8a29e;
+    background: transparent;
+    border: 1px dashed #bfb9b2;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+.doc-add-page-btn:hover {
+    color: #57534e;
+    border-color: #78716c;
+    background: rgba(28, 25, 23, 0.04);
+}
+
+/* Delete page button — top-right of each non-first page */
+.doc-page-delete {
+    position: absolute;
+    top: 0.625rem;
+    right: 0.625rem;
+    width: 1.625rem;
+    height: 1.625rem;
+    border-radius: 0.375rem;
+    border: none;
+    background: none;
+    color: #c4bbae;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background-color 0.15s;
+    font-family: inherit;
+}
+.doc-page-delete:hover {
+    color: #dc2626;
+    background: #fef2f2;
+}
+
+/* Quill inside the body zone */
+.doc-page-body .ql-container.ql-snow {
+    border: none;
+    font-family: 'Times New Roman', Times, Georgia, serif;
+    font-size: 12pt;
+    color: #1c1917;
+}
+.doc-page-body .ql-editor {
+    padding: 0;
+    min-height: 18cm;
+    max-height: 20cm;
+    overflow: hidden;
+    font-size: 12pt;
+    line-height: 1.65;
+    color: #1c1917;
+}
+.doc-page-body .ql-editor.ql-blank::before {
+    font-style: normal;
+    color: #c4bbae;
+    font-size: 12pt;
+    left: 0;
+    right: 0;
+}
+
+/* Quill link tooltip */
+.ql-snow .ql-tooltip { z-index: 100; }
+
+/* ================================================
+   DOCUMENT EDITOR — dark mode
+   ================================================ */
+[data-theme="dark"] .doc-header {
+    background: #212125;
+    border-bottom-color: #3c3c44;
+}
+[data-theme="dark"] .doc-title-input {
+    color: #ededf0;
+}
+[data-theme="dark"] .doc-title-input::placeholder { color: #505059; }
+[data-theme="dark"] .doc-title-input:hover,
+[data-theme="dark"] .doc-title-input:focus {
+    background: #2b2b31;
+    border-color: #3c3c44;
+}
+[data-theme="dark"] .btn-secondary {
+    color: #9898a6;
+    border-color: #3c3c44;
+}
+[data-theme="dark"] .btn-secondary:hover {
+    background: #2b2b31;
+    border-color: #505059;
+    color: #ededf0;
+}
+[data-theme="dark"] .doc-toolbar-sticky {
+    background: #212125;
+    border-bottom-color: #3c3c44;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow .ql-picker-label,
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow button { color: #9898a6; }
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow .ql-stroke { stroke: #9898a6; }
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow .ql-fill   { fill: #9898a6; }
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow button:hover,
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow .ql-picker-label:hover { color: #ededf0; }
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow button:hover .ql-stroke,
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow .ql-picker-label:hover .ql-stroke { stroke: #ededf0; }
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow button:hover .ql-fill,
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow .ql-picker-label:hover .ql-fill   { fill: #ededf0; }
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow button.ql-active { color: #ededf0; }
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow button.ql-active .ql-stroke { stroke: #ededf0; }
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow button.ql-active .ql-fill   { fill: #ededf0; }
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow .ql-picker-options {
+    background: #2b2b31;
+    border-color: #3c3c44;
+}
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow .ql-picker-item { color: #9898a6; }
+[data-theme="dark"] .doc-toolbar-sticky .ql-snow .ql-picker-item:hover { color: #ededf0; background: #33333a; }
+[data-theme="dark"] .doc-page-wrap { background: #111113; }
+[data-theme="dark"] #pagesContainer { background: transparent; }
+[data-theme="dark"] .doc-page {
+    background: #212125;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4), 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+[data-theme="dark"] .doc-add-page-btn {
+    color: #505059;
+    border-color: #3c3c44;
+}
+[data-theme="dark"] .doc-add-page-btn:hover {
+    color: #9898a6;
+    border-color: #505059;
+    background: rgba(255, 255, 255, 0.04);
+}
+[data-theme="dark"] .doc-page-delete { color: #505059; }
+[data-theme="dark"] .doc-page-delete:hover { color: #f87171; background: rgba(239, 68, 68, 0.1); }
+[data-theme="dark"] .doc-page-body .ql-container.ql-snow { color: #ededf0; }
+[data-theme="dark"] .doc-page-body .ql-editor { color: #ededf0; }
+[data-theme="dark"] .doc-page-body .ql-editor.ql-blank::before { color: #505059; }
+[data-theme="dark"] .page-header-editor,
+[data-theme="dark"] .page-footer-editor { color: #ededf0; }
+[data-theme="dark"] .page-header-editor:hover,
+[data-theme="dark"] .page-footer-editor:hover { background: rgba(255,255,255,0.04); }
+[data-theme="dark"] .page-header-editor:focus,
+[data-theme="dark"] .page-footer-editor:focus { background: rgba(255,255,255,0.06); }
+[data-theme="dark"] .page-header-editor:empty::before,
+[data-theme="dark"] .page-footer-editor:empty::before { color: #505059; }
+
+/* ================================================
+   DOCUMENT EDITOR — print / PDF export
+   ================================================ */
+@media print {
+    .site-nav,
+    .sidebar,
+    .doc-header,
+    .doc-toolbar-sticky,
+    .doc-add-page-btn,
+    .doc-page-delete { display: none !important; }
+
+    /* Reset dark color-scheme so the browser renders in light mode */
+    html { color-scheme: light !important; }
+
+    body, .app-layout { display: block !important; }
+    .main-content { width: 100% !important; }
+
+    /* Force white background — text colors remain as user specified */
+    html, body,
+    .doc-page-wrap,
+    #pagesContainer,
+    .doc-page,
+    .doc-page-header,
+    .doc-page-body,
+    .doc-page-footer,
+    .page-header-editor,
+    .page-footer-editor,
+    .doc-editor-single,
+    .doc-editor-split,
+    .doc-col,
+    .ql-container,
+    .ql-editor {
+        background: #ffffff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .doc-page-wrap,
+    #pagesContainer {
+        padding: 0 !important;
+        gap: 0 !important;
+        min-height: unset !important;
+    }
+
+    /* Each page = one printed A4 page */
+    .doc-page {
+        width: 100% !important;
+        min-height: unset !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        break-after: page;
+        page-break-after: always;
+    }
+    .doc-page:last-child {
+        break-after: avoid;
+        page-break-after: avoid;
+    }
+
+    /* @page handles outer margins — reset zone padding so content starts at the margin */
+    .doc-page-header { padding: 0 0 0.5cm !important; }
+    .doc-page-body   { padding: 0 !important; }
+    .doc-page-footer { padding: 0.5cm 0 0 !important; }
+
+    .doc-page-body .ql-container.ql-snow,
+    .doc-editor-split .ql-container.ql-snow { border: none !important; }
+
+    /* Kill any scrollbars Quill's snow theme introduces */
+    .ql-container,
+    .ql-editor { overflow: hidden !important; }
+
+    /* Split columns border in print/preview */
+    .doc-col { border-color: #c0b9b0 !important; }
+
+    /* Fix grey text in dark mode without overriding user-set inline colors */
+    [data-theme="dark"] .doc-page .doc-editor-single .ql-editor,
+    [data-theme="dark"] .doc-page .doc-editor-split  .ql-editor,
+    [data-theme="dark"] .doc-page .page-header-editor,
+    [data-theme="dark"] .doc-page .page-footer-editor { color: #1c1917; }
+
+    @page {
+        size: A4;
+        margin: 2.5cm 3cm;
+    }
+}
+
+/* ================================================
+   DOCUMENT EDITOR — split column mode
+   ================================================ */
+
+/* Single / split visibility */
+.doc-editor-single { display: block; }
+.doc-editor-split  { display: none; }
+
+.doc-page.split-mode .doc-editor-single { display: none; }
+.doc-page.split-mode .doc-editor-split  {
+    display: flex;
+    align-items: flex-start;
+    min-height: 18cm;
+}
+
+/* Columns — each wrapped with a full border like a table cell, touching with shared center border */
+.doc-col {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid #d6d0ca;
+    padding: 0.75rem 1rem;
+}
+.doc-col:first-child {
+    border-right: none;
+}
+
+/* The flex divider element is no longer needed — hidden in favour of ::before */
+.doc-col-divider { display: none; }
+
+/* Quill inside split columns */
+.doc-editor-split .ql-container.ql-snow {
+    border: none;
+    font-family: 'Times New Roman', Times, Georgia, serif;
+    font-size: 12pt;
+    color: #1c1917;
+}
+.doc-editor-split .ql-editor {
+    padding: 0;
+    min-height: 20cm;
+    max-height: 20cm;
+    overflow: hidden;
+    font-size: 12pt;
+    line-height: 1.65;
+    color: #1c1917;
+}
+.doc-editor-split .ql-editor.ql-blank::before {
+    font-style: normal;
+    color: #c4bbae;
+    left: 0;
+    right: 0;
+}
+
+/* Dark mode — split */
+[data-theme="dark"] .doc-col { border-color: #3c3c44; }
+[data-theme="dark"] .doc-editor-split .ql-container.ql-snow { color: #ededf0; }
+[data-theme="dark"] .doc-editor-split .ql-editor { color: #ededf0; }
+[data-theme="dark"] .doc-editor-split .ql-editor.ql-blank::before { color: #505059; }
+[data-theme="dark"] .btn-secondary.is-active {
+    background: #2b2b31;
+    border-color: #505059;
+    color: #ededf0;
+}
+
+/* ================================================
+   Variable / merge-tag chip
+   ================================================ */
+.ql-variable {
+    display: inline-block;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    border-radius: 3px;
+    padding: 0 4px;
+    font-size: 0.85em;
+    font-family: 'Courier New', Courier, monospace;
+    line-height: 1.4;
+    cursor: default;
+    user-select: none;
+    white-space: nowrap;
+    /* Reflect inline formatting applied in the editor (bold / italic /
+       underline / strike) so the chip previews how the value will look.
+       The formatting is carried to the downloaded value via applyVarsToDelta. */
+    font-weight: inherit;
+    font-style: inherit;
+    text-decoration: inherit;
+}
+[data-theme="dark"] .ql-variable {
+    background: #1e3a5f;
+    color: #93c5fd;
+    border-color: #1e40af;
+}
+@media print {
+    .ql-variable {
+        background: transparent !important;
+        border: none !important;
+        color: inherit !important;
+        font-family: inherit !important;
+        font-size: inherit !important;
+        padding: 0 !important;
+    }
+}
+
+/* ================================================
+   TEMPLATE / DOCUMENT CARDS
+   ================================================ */
+
+/* Template listing grid */
+.tpl-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+.tpl-card {
+    background: #ffffff;
+    border: 1px solid #e8e4de;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.tpl-card:hover {
+    border-color: #d6d0ca;
+    box-shadow: 0 2px 10px rgba(28,25,23,0.08);
+}
+.tpl-card-name {
+    font-weight: 600;
+    font-size: 1rem;
+    color: #1c1917;
+}
+.tpl-card-meta {
+    font-size: 0.8125rem;
+    color: #a8a29e;
+}
+.tpl-card-desc {
+    font-size: 0.8125rem;
+    color: #78716c;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.tpl-card-docs {
+    list-style: none;
+    margin: 0;
+    padding: 0.625rem 0 0;
+    border-top: 1px dashed #ece8e2;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+.tpl-card-docs li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+    color: #57534e;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.tpl-card-docs li svg { color: #b8b2aa; flex-shrink: 0; }
+.tpl-card-docs-more { color: #a8a29e !important; font-size: 0.75rem !important; }
+.tpl-card-docs-empty {
+    padding: 0.625rem 0 0;
+    border-top: 1px dashed #ece8e2;
+    font-size: 0.8125rem;
+    color: #c0b9b0;
+    font-style: italic;
+}
+.tpl-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: auto;
+}
+.tpl-card-open {
+    flex: 1;
+}
+.btn-icon-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 6px;
+    border: 1px solid #e8e4de;
+    background: transparent;
+    color: #a8a29e;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    font-family: inherit;
+}
+.btn-icon-danger:hover {
+    color: #ef4444;
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+/* Document cards grid (detail page) */
+.doc-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.25rem;
+}
+.doc-card {
+    background: #ffffff;
+    border: 1px solid #e8e4de;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow 0.15s;
+}
+.doc-card:hover {
+    box-shadow: 0 2px 10px rgba(28,25,23,0.08);
+}
+.doc-card-title-bar {
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 1px solid #f0ede9;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.doc-card-name {
+    flex: 1;
+    font-weight: 600;
+    font-size: 0.9375rem;
+    color: #1c1917;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.doc-preview-area {
+    height: 220px;
+    overflow: hidden;
+    background: #faf9f7;
+    position: relative;
+    cursor: pointer;
+}
+.doc-preview-area::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 48px;
+    background: linear-gradient(transparent, #faf9f7);
+    pointer-events: none;
+}
+.doc-preview-inner {
+    padding: 1rem;
+    height: 100%;
+    overflow: hidden;
+}
+.doc-preview-inner .ql-container.ql-snow {
+    border: none;
+    font-family: 'Times New Roman', Times, Georgia, serif;
+    font-size: 11pt;
+    color: #1c1917;
+}
+.doc-preview-inner .ql-editor {
+    padding: 0;
+    overflow: hidden;
+    min-height: unset;
+    max-height: none;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #1c1917;
+}
+.doc-preview-inner.doc-preview-split {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+}
+.doc-preview-split .doc-preview-col {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+.doc-preview-split .doc-preview-col-divider {
+    width: 1px;
+    flex-shrink: 0;
+    background: #e7e2dc;
+    margin: 0 0.75rem;
+}
+[data-theme="dark"] .doc-preview-split .doc-preview-col-divider { background: #2e2e36; }
+.doc-card-footer {
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid #f0ede9;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* Print zone */
+#printZone {
+    display: none;
+}
+@media print {
+    body.printing-doc > * { display: none !important; }
+    body.printing-doc #printZone {
+        display: block !important;
+        position: static;
+    }
+    #printZone .doc-page-wrap {
+        padding: 0 !important;
+        gap: 0 !important;
+        background: white !important;
+    }
+    #printZone .doc-page-body .ql-container.ql-snow,
+    #printZone .doc-editor-split .ql-container.ql-snow { border: none !important; }
+    #printZone .ql-container,
+    #printZone .ql-editor { overflow: hidden !important; }
+    #printZone .ql-variable {
+        background: transparent !important;
+        border: none !important;
+        color: inherit !important;
+        font-family: inherit !important;
+        font-size: inherit !important;
+        padding: 0 !important;
+    }
+    #printZone .doc-col { border-color: #c0b9b0 !important; }
+}
+
+/* Dark mode for new cards */
+[data-theme="dark"] .tpl-card,
+[data-theme="dark"] .doc-card {
+    background: #1c1c21;
+    border-color: #2e2e36;
+}
+[data-theme="dark"] .tpl-card:hover,
+[data-theme="dark"] .doc-card:hover {
+    border-color: #3c3c44;
+}
+[data-theme="dark"] .tpl-card-name,
+[data-theme="dark"] .doc-card-name { color: #ededf0; }
+[data-theme="dark"] .tpl-card-meta { color: #505059; }
+[data-theme="dark"] .tpl-card-desc { color: #9898a6; }
+[data-theme="dark"] .tpl-card-docs { border-top-color: #2e2e36; }
+[data-theme="dark"] .tpl-card-docs li { color: #c7c7d1; }
+[data-theme="dark"] .tpl-card-docs li svg { color: #505059; }
+[data-theme="dark"] .tpl-card-docs-more { color: #505059 !important; }
+[data-theme="dark"] .tpl-card-docs-empty { border-top-color: #2e2e36; color: #505059; }
+[data-theme="dark"] .tpl-card-actions,
+[data-theme="dark"] .doc-card-title-bar,
+[data-theme="dark"] .doc-card-footer { border-color: #2e2e36; }
+[data-theme="dark"] .doc-preview-area { background: #16161a; }
+[data-theme="dark"] .doc-preview-area::after { background: linear-gradient(transparent, #16161a); }
+[data-theme="dark"] .doc-preview-inner .ql-container.ql-snow,
+[data-theme="dark"] .doc-preview-inner .ql-editor { color: #ededf0; }
+[data-theme="dark"] .btn-icon-danger { border-color: #2e2e36; color: #505059; }
+[data-theme="dark"] .btn-icon-danger:hover { color: #f87171; background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); }
+
+/* "Use template" variable-value modal labels */
+.var-use-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #1d4ed8;
+    margin-bottom: 0.125rem;
+}
+.var-use-hint {
+    font-size: 0.75rem;
+    color: #a8a29e;
+    margin-bottom: 0.375rem;
+}
+[data-theme="dark"] .var-use-label { color: #93c5fd; }
+[data-theme="dark"] .var-use-hint  { color: #9898a6; }
+
+/* Template view — editable name + description */
+.btn-icon-edit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.875rem;
+    height: 1.875rem;
+    flex-shrink: 0;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #a8a29e;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.btn-icon-edit:hover { color: #1c1917; background: #f0efed; border-color: #e2dfdb; }
+.tpl-view-desc {
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+    color: #78716c;
+    line-height: 1.5;
+    max-width: 48rem;
+}
+[data-theme="dark"] .btn-icon-edit { color: #6b6b76; }
+[data-theme="dark"] .btn-icon-edit:hover { color: #ededf0; background: #26262c; border-color: #3c3c44; }
+[data-theme="dark"] .tpl-view-desc { color: #9898a6; }

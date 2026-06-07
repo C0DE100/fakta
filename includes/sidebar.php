@@ -1,6 +1,6 @@
 <?php
 // $currentPage should be set before including this file.
-// Values: 'home' | 'kreraj-faktura' | 'pregled-fakturi'
+// Values: 'home' | 'kreraj-faktura' | 'pregled-fakturi' | 'tipski-dokumenti' | 'kreraj-dokument'
 $currentPage = $currentPage ?? 'home';
 $invoicesOpen = in_array($currentPage, ['kreraj-faktura', 'pregled-fakturi']);
 ?>
@@ -50,6 +50,14 @@ $invoicesOpen = in_array($currentPage, ['kreraj-faktura', 'pregled-fakturi']);
                 </a>
             </div>
         </div>
+
+        <a href="tipski-dokumenti.php" class="sidebar-btn<?= in_array($currentPage, ['tipski-dokumenti', 'kreraj-dokument']) ? ' sidebar-btn--active' : '' ?>" title="Типски Документи">
+            <svg xmlns="http://www.w3.org/2000/svg" class="sidebar-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+            </svg>
+            <span class="sidebar-btn-label">Типски Документи</span>
+        </a>
 
     </nav>
 
