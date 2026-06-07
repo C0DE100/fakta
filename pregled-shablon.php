@@ -532,7 +532,7 @@ unset($doc);
         /* ─────────────────────────────────────────────
            Full template use
         ───────────────────────────────────────────── */
-        document.getElementById('btnUseTemplate').addEventListener('click', function () {
+        function useTemplate() {
             if (!DOCS.length) {
                 alert('Овој шаблон нема документи.');
                 return;
@@ -545,7 +545,9 @@ unset($doc);
             openUseModal('Користи шаблон: ' + TEMPLATE.name, varMap, function (values) {
                 printAllDocs(DOCS, values);
             });
-        });
+        }
+
+        document.getElementById('btnUseTemplate').addEventListener('click', useTemplate);
 
         /* ─────────────────────────────────────────────
            Delete document
@@ -679,6 +681,18 @@ unset($doc);
            Init
         ───────────────────────────────────────────── */
         renderDocCards();
+
+        // Arrived via "Користи шаблон" from the listings page (?use=1) →
+        // launch the download flow automatically, then strip the flag so a
+        // refresh doesn't re-trigger it.
+        (function () {
+            var params = new URLSearchParams(window.location.search);
+            if (params.get('use') !== '1') return;
+            params.delete('use');
+            var qs = params.toString();
+            history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : ''));
+            setTimeout(useTemplate, 100);
+        }());
 
     }());
     </script>

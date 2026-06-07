@@ -893,6 +893,8 @@ body.modal-open {
     background: #ffffff;
     border-bottom: 1px solid #e8e4de;
     box-shadow: 0 1px 4px rgba(28, 25, 23, 0.05);
+    display: flex;
+    align-items: center;
 }
 
 /* Override Quill Snow toolbar so it merges into our sticky bar */
@@ -901,6 +903,23 @@ body.modal-open {
     padding: 0.4rem 1rem;
     font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
     flex-wrap: wrap;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* Document action buttons docked at the right end of the toolbar row */
+.doc-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-left: 0.875rem;
+    padding-right: 1rem;
+    border-left: 1px solid #e8e4de;
+}
+.doc-toolbar-actions .btn-secondary {
+    padding: 0.375rem 0.75rem;
 }
 .doc-toolbar-sticky .ql-toolbar.ql-snow .ql-formats {
     margin-right: 0.625rem;
@@ -1116,6 +1135,7 @@ body.modal-open {
     border-bottom-color: #3c3c44;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
+[data-theme="dark"] .doc-toolbar-actions { border-left-color: #3c3c44; }
 [data-theme="dark"] .doc-toolbar-sticky .ql-snow .ql-picker-label,
 [data-theme="dark"] .doc-toolbar-sticky .ql-snow button { color: #9898a6; }
 [data-theme="dark"] .doc-toolbar-sticky .ql-snow .ql-stroke { stroke: #9898a6; }
@@ -1424,12 +1444,18 @@ body.modal-open {
 }
 .tpl-card-actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
     margin-top: auto;
 }
+.tpl-card-use {
+    flex: 1 1 100%;
+    justify-content: center;
+}
 .tpl-card-open {
     flex: 1;
+    justify-content: center;
 }
 .btn-icon-danger {
     display: inline-flex;
@@ -1620,6 +1646,63 @@ body.modal-open {
 }
 [data-theme="dark"] .var-use-label { color: #93c5fd; }
 [data-theme="dark"] .var-use-hint  { color: #9898a6; }
+
+/* Note shown when a variable will replace selected text */
+.var-replace-note {
+    font-size: 0.8125rem;
+    color: #1d4ed8;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    margin-bottom: 0.875rem;
+    word-break: break-word;
+}
+[data-theme="dark"] .var-replace-note {
+    color: #93c5fd;
+    background: #1e3a5f;
+    border-color: #1e40af;
+}
+
+/* Variable suggestions in the "insert variable" modal */
+.var-suggest-wrap { margin-bottom: 1rem; }
+.var-suggest-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #78716c;
+    margin-bottom: 0.5rem;
+    letter-spacing: 0.01em;
+}
+.var-suggest-note { font-weight: 400; color: #a8a29e; }
+.var-suggest-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    max-height: 8.5rem;
+    overflow-y: auto;
+}
+.var-suggest-chip {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    border-radius: 4px;
+    padding: 0.15rem 0.45rem;
+    font-size: 0.8125rem;
+    font-family: 'Courier New', Courier, monospace;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.12s, border-color 0.12s, transform 0.05s;
+}
+.var-suggest-chip:hover  { background: #dbeafe; border-color: #93c5fd; color: #1e40af; }
+.var-suggest-chip:active { transform: scale(0.96); }
+[data-theme="dark"] .var-suggest-label { color: #9898a6; }
+[data-theme="dark"] .var-suggest-note  { color: #6b6b76; }
+[data-theme="dark"] .var-suggest-chip {
+    background: #1e3a5f;
+    color: #93c5fd;
+    border-color: #1e40af;
+}
+[data-theme="dark"] .var-suggest-chip:hover { background: #24496f; border-color: #2563eb; color: #bfdbfe; }
 
 /* Template view — editable name + description */
 .btn-icon-edit {
