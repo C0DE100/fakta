@@ -258,6 +258,13 @@ foreach ($templateVarMap as $name => $docNames) {
         var pageSeq     = 0;
         var Delta       = Quill.import('delta');
 
+        // Local auto-saved draft of this document (resumable via the bottom-right
+        // "creating document" pill). Keyed by editing context so the new-doc draft
+        // and each edited-doc draft stay separate.
+        var DOC_DRAFT_KEY    = 'fakta_doc_draft_' + (DOC_ID ? 'd' + DOC_ID : 't' + TEMPLATE_ID + '_new');
+        var DOC_DRAFT_ACTIVE = 'fakta_active_doc_draft';
+        var _saving          = false; // set on a real save so we don't re-draft on redirect
+
         /* ─────────────────────────────────────────────
            Variable name modal
         ───────────────────────────────────────────── */
@@ -471,6 +478,7 @@ foreach ($templateVarMap as $name => $docNames) {
                 var atEnd = !sel || sel.index >= q.getLength() - 1;
                 var moved = reflowStream(q._col, q._pageEl, mightShrink);
                 if (moved) restoreCaret(q, sel, atEnd);
+                scheduleSnapshot();
             });
             return q;
         }
@@ -811,6 +819,7 @@ foreach ($templateVarMap as $name => $docNames) {
         }
 
         document.getElementById('btnAddPage').addEventListener('click', createPage);
+        document.getElementById('btnAddPage').addEventListener('click', scheduleSnapshot);
 
         /* ─────────────────────────────────────────────
            Delete page
@@ -827,6 +836,7 @@ foreach ($templateVarMap as $name => $docNames) {
             var refocus = (splitActive && last._quillLeft) ? last._quillLeft
                         : (last._quillSingle || quillMain);
             refocus.focus();
+            scheduleSnapshot();
         });
 
         /* ─────────────────────────────────────────────
@@ -889,21 +899,23 @@ foreach ($templateVarMap as $name => $docNames) {
                 activeQuill = quillMain;
                 setTimeout(function () { quillMain.focus(); }, 60);
             }
+            scheduleSnapshot();
         });
 
         /* ─────────────────────────────────────────────
-           Load EDIT_DOC data into page 0
+           Load a state object (EDIT_DOC or a local draft) into the editor
         ───────────────────────────────────────────── */
-        if (EDIT_DOC) {
-            document.getElementById('docTitleInput').value = EDIT_DOC.name || '';
-            splitActive = !!parseInt(EDIT_DOC.is_split);
+        function loadState(state) {
+            document.getElementById('docTitleInput').value = state.name || '';
+            splitActive = !!parseInt(state.is_split);
             if (splitActive) {
                 document.getElementById('btnSplitToggle').classList.add('is-active');
                 page0.classList.add('split-mode');
                 initSplitForPage(page0);
             }
-            if (EDIT_DOC.pages && EDIT_DOC.pages.length > 0) {
-                var p0 = EDIT_DOC.pages[0];
+            var pages = state.pages || [];
+            if (pages.length > 0) {
+                var p0 = pages[0];
                 var h0 = page0.querySelector('.page-header-editor');
                 var f0 = page0.querySelector('.page-footer-editor');
                 if (h0 && p0.header) h0.innerHTML = p0.header;
@@ -913,19 +925,95 @@ foreach ($templateVarMap as $name => $docNames) {
                     if (p0.left  && page0._quillLeft)  page0._quillLeft.setContents(p0.left,  'silent');
                     if (p0.right && page0._quillRight) page0._quillRight.setContents(p0.right, 'silent');
                 }
-                for (var pi = 1; pi < EDIT_DOC.pages.length; pi++) {
-                    createPageWithData(EDIT_DOC.pages[pi]);
-                }
+                for (var pi = 1; pi < pages.length; pi++) createPageWithData(pages[pi]);
             }
             // Re-paginate restored content in case anything no longer fits.
             setTimeout(function () {
-                if (splitActive) {
-                    reflowStream('left',  page0);
-                    reflowStream('right', page0);
-                } else {
-                    reflowStream('single', page0);
-                }
+                if (splitActive) { reflowStream('left', page0); reflowStream('right', page0); }
+                else            { reflowStream('single', page0); }
             }, 0);
+        }
+
+        /* ─────────────────────────────────────────────
+           Local draft — auto-saved snapshot, resumable from the pill
+        ───────────────────────────────────────────── */
+        function collectPages() {
+            var pages = [];
+            document.querySelectorAll('.doc-page').forEach(function (pageEl) {
+                pages.push({
+                    header: trimHtml((pageEl.querySelector('.page-header-editor') || {}).innerHTML || ''),
+                    footer: trimHtml((pageEl.querySelector('.page-footer-editor') || {}).innerHTML || ''),
+                    single: (!splitActive && pageEl._quillSingle) ? getTrimmedContents(pageEl._quillSingle) : null,
+                    left:   (splitActive  && pageEl._quillLeft)   ? getTrimmedContents(pageEl._quillLeft)   : null,
+                    right:  (splitActive  && pageEl._quillRight)  ? getTrimmedContents(pageEl._quillRight)  : null,
+                });
+            });
+            return pages;
+        }
+
+        function editorIsEmpty() {
+            if (document.getElementById('docTitleInput').value.trim()) return false;
+            var has = false;
+            document.querySelectorAll('.doc-page').forEach(function (pageEl) {
+                ['_quillSingle', '_quillLeft', '_quillRight'].forEach(function (k) {
+                    if (pageEl[k] && pageEl[k].getText().trim()) has = true;
+                });
+                var h = pageEl.querySelector('.page-header-editor');
+                var f = pageEl.querySelector('.page-footer-editor');
+                if (h && h.textContent.trim()) has = true;
+                if (f && f.textContent.trim()) has = true;
+            });
+            return !has;
+        }
+
+        function clearDraft() {
+            try { sessionStorage.removeItem(DOC_DRAFT_KEY); } catch (e) {}
+            try {
+                var a = JSON.parse(sessionStorage.getItem(DOC_DRAFT_ACTIVE));
+                if (a && a.key === DOC_DRAFT_KEY) sessionStorage.removeItem(DOC_DRAFT_ACTIVE);
+            } catch (e) {}
+        }
+
+        function snapshotDraft() {
+            if (_saving) return;
+            if (editorIsEmpty()) { clearDraft(); return; }
+            var state = {
+                name:     document.getElementById('docTitleInput').value,
+                is_split: splitActive ? 1 : 0,
+                pages:    collectPages(),
+                ts:       Date.now()
+            };
+            try { sessionStorage.setItem(DOC_DRAFT_KEY, JSON.stringify(state)); } catch (e) {}
+            var url = 'kreraj-dokument.php?' + (DOC_ID
+                ? 'doc_id=' + DOC_ID + '&template_id=' + TEMPLATE_ID
+                : 'template_id=' + TEMPLATE_ID);
+            try {
+                sessionStorage.setItem(DOC_DRAFT_ACTIVE, JSON.stringify({
+                    key:   DOC_DRAFT_KEY,
+                    title: (state.name || '').trim() || 'Без наслов',
+                    url:   url,
+                    kind:  DOC_ID ? 'edit' : 'create',
+                    ts:    state.ts
+                }));
+            } catch (e) {}
+        }
+
+        var _draftTimer = null;
+        function scheduleSnapshot() {
+            clearTimeout(_draftTimer);
+            _draftTimer = setTimeout(snapshotDraft, 600);
+        }
+
+        /* ─────────────────────────────────────────────
+           Initial content: local draft → EDIT_DOC → blank (+ header/footer prefill)
+        ───────────────────────────────────────────── */
+        var _docDraft = null;
+        try { _docDraft = JSON.parse(sessionStorage.getItem(DOC_DRAFT_KEY)); } catch (e) {}
+
+        if (_docDraft && _docDraft.pages && _docDraft.pages.length) {
+            loadState(_docDraft);
+        } else if (EDIT_DOC) {
+            loadState(EDIT_DOC);
         } else if (PREFILL_HEADER || PREFILL_FOOTER) {
             // New document: inherit the header/footer from the template's most
             // recent document so the user doesn't retype them every time.
@@ -934,6 +1022,11 @@ foreach ($templateVarMap as $name => $docNames) {
             if (ph && PREFILL_HEADER) ph.innerHTML = PREFILL_HEADER;
             if (pf && PREFILL_FOOTER) pf.innerHTML = PREFILL_FOOTER;
         }
+
+        // Auto-snapshot on any edit (typing, title, header/footer changes), and
+        // flush the latest state when leaving so nothing typed is lost.
+        document.addEventListener('input', scheduleSnapshot);
+        window.addEventListener('beforeunload', snapshotDraft);
 
         /* ─────────────────────────────────────────────
            Save document
@@ -999,19 +1092,9 @@ foreach ($templateVarMap as $name => $docNames) {
             var name = document.getElementById('docTitleInput').value.trim();
             if (!name) { document.getElementById('docTitleInput').focus(); return; }
 
-            var pages = [];
-            document.querySelectorAll('.doc-page').forEach(function (pageEl) {
-                // Persist only the content for the active layout. Dropping the
-                // inactive side prevents stale content (and its variables) from
-                // the previous split state lingering after a toggle + save.
-                pages.push({
-                    header: trimHtml((pageEl.querySelector('.page-header-editor') || {}).innerHTML || ''),
-                    footer: trimHtml((pageEl.querySelector('.page-footer-editor') || {}).innerHTML || ''),
-                    single: (!splitActive && pageEl._quillSingle) ? getTrimmedContents(pageEl._quillSingle) : null,
-                    left:   (splitActive  && pageEl._quillLeft)   ? getTrimmedContents(pageEl._quillLeft)   : null,
-                    right:  (splitActive  && pageEl._quillRight)  ? getTrimmedContents(pageEl._quillRight)  : null,
-                });
-            });
+            // Persist only the content for the active layout (collectPages drops
+            // the inactive split side so stale content can't linger after a toggle).
+            var pages = collectPages();
 
             var varNames = extractVarNamesFromPages(pages);
 
@@ -1033,6 +1116,8 @@ foreach ($templateVarMap as $name => $docNames) {
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
                     if (res.success) {
+                        _saving = true;
+                        clearDraft(); // saved to DB → drop the local draft + pill
                         window.location.href = 'pregled-shablon.php?id=' + TEMPLATE_ID;
                     } else {
                         alert(res.message || 'Грешка при зачувување.');

@@ -150,16 +150,16 @@
                     docsHtml = '<div class="tpl-card-docs-empty">Нема документи</div>';
                 }
 
-                // "Use template" jumps to the template page and auto-launches
-                // the download flow there (?use=1). Only shown when there's
-                // something to print.
+                // "Use template" opens the global draft workspace in place (no
+                // navigation). Only shown when there's something to print.
                 var useHtml = docCount
-                    ? '<a href="pregled-shablon.php?id=' + tpl.id + '&use=1" class="btn-new-client tpl-card-use">' +
+                    ? '<button type="button" class="btn-new-client tpl-card-use" data-use-tpl ' +
+                          'data-id="' + tpl.id + '" data-name="' + escapeHtml(tpl.name).replace(/"/g, '&quot;') + '">' +
                           '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
                               '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>' +
                           '</svg>' +
                           'Користи шаблон' +
-                      '</a>'
+                      '</button>'
                     : '';
 
                 html += '<div class="tpl-card">' +
@@ -267,6 +267,15 @@
             var btn = e.target.closest('.btn-delete-tpl');
             if (!btn) return;
             openDeleteModal(parseInt(btn.getAttribute('data-id'), 10));
+        });
+
+        // "Користи шаблон" → open the global draft workspace in place.
+        document.getElementById('tplGrid').addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-use-tpl]');
+            if (!btn) return;
+            var id   = parseInt(btn.getAttribute('data-id'), 10);
+            var name = btn.getAttribute('data-name') || '';
+            if (window.DraftWorkspace) window.DraftWorkspace.open(id, name);
         });
 
         document.getElementById('tplDeleteConfirm').addEventListener('click', function () {

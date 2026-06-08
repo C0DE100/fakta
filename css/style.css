@@ -1602,6 +1602,260 @@ body.modal-open {
     #printZone .doc-col { border-color: #c0b9b0 !important; }
 }
 
+/* ================================================
+   "Use template" draft workspace
+   ================================================ */
+.ws-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: #e8e4de;
+    flex-direction: column;
+}
+.ws-overlay.open { display: flex; }
+body.ws-open { overflow: hidden; }
+
+.ws-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1.25rem;
+    background: #ffffff;
+    border-bottom: 1px solid #e0dbd4;
+    box-shadow: 0 1px 4px rgba(28, 25, 23, 0.05);
+}
+.ws-bar-left { display: flex; align-items: baseline; gap: 0.75rem; min-width: 0; }
+.ws-title { font-size: 0.95rem; font-weight: 600; color: #1c1917; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-saved { font-size: 0.75rem; color: #a8a29e; white-space: nowrap; flex-shrink: 0; }
+.ws-bar-actions { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+.ws-bar-actions .btn-new-client { margin-right: 0.4rem; }
+
+/* Gmail-style window buttons */
+.ws-winbtn {
+    width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: #78716c;
+    border-radius: 0.4rem;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.ws-winbtn:hover { background: #f0efed; color: #1c1917; }
+[data-theme="dark"] .ws-winbtn { color: #9898a6; }
+[data-theme="dark"] .ws-winbtn:hover { background: #2b2b31; color: #ededf0; }
+
+/* Minimized (docked) draft — Gmail-style pill at the bottom-right corner */
+.ws-overlay.minimized {
+    inset: auto 1.5rem 0 auto;
+    width: 22rem;
+    max-width: calc(100vw - 3rem);
+    height: auto;
+    border: 1px solid #e0dbd4;
+    border-bottom: none;
+    border-radius: 0.6rem 0.6rem 0 0;
+    box-shadow: 0 -2px 18px rgba(28, 25, 23, 0.18);
+    overflow: hidden;
+}
+.ws-overlay.minimized .ws-body { display: none; }
+.ws-overlay.minimized .ws-bar { cursor: pointer; }
+.ws-overlay.minimized .ws-saved,
+.ws-overlay.minimized #wsDownload,
+.ws-overlay.minimized #wsMinimize { display: none; }
+.ws-overlay:not(.minimized) #wsExpand { display: none; }
+[data-theme="dark"] .ws-overlay.minimized { border-color: #3c3c44; box-shadow: 0 -2px 18px rgba(0,0,0,0.5); }
+
+/* ================================================
+   "Document in progress" draft pill (distinct from the workspace pill)
+   ================================================ */
+.docdraft-pill {
+    position: fixed;
+    right: 1.5rem;
+    bottom: 1.25rem;
+    z-index: 59;
+    display: flex;
+    align-items: stretch;
+    background: #fffaf0;
+    border: 1px solid #f0d9a8;
+    border-radius: 0.65rem;
+    box-shadow: 0 6px 24px rgba(28, 25, 23, 0.18);
+    max-width: 21rem;
+    overflow: hidden;
+}
+.docdraft-pill.docdraft-stacked { bottom: 4.25rem; }
+.docdraft-main {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.6rem 0.8rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    min-width: 0;
+    font-family: inherit;
+}
+.docdraft-main:hover { background: #fdf3df; }
+.docdraft-icon {
+    display: inline-flex;
+    width: 1.9rem;
+    height: 1.9rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    background: #f59e0b;
+    color: #ffffff;
+    border-radius: 0.45rem;
+}
+.docdraft-text { display: flex; flex-direction: column; min-width: 0; }
+.docdraft-kind {
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #b45309;
+}
+.docdraft-title {
+    font-size: 0.8125rem;
+    color: #1c1917;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 12rem;
+}
+.docdraft-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    border: none;
+    border-left: 1px solid #f0d9a8;
+    background: transparent;
+    color: #a8825a;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.docdraft-x:hover { background: #fdf3df; color: #b45309; }
+[data-theme="dark"] .docdraft-pill { background: #2a2418; border-color: #5a4a2a; box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
+[data-theme="dark"] .docdraft-main:hover,
+[data-theme="dark"] .docdraft-x:hover { background: #332b1c; }
+[data-theme="dark"] .docdraft-title { color: #ededf0; }
+[data-theme="dark"] .docdraft-kind  { color: #f0b24a; }
+[data-theme="dark"] .docdraft-x { border-left-color: #5a4a2a; color: #b08a52; }
+
+.ws-body { flex: 1; display: flex; min-height: 0; }
+
+.ws-side {
+    width: 320px;
+    flex-shrink: 0;
+    background: #ffffff;
+    border-right: 1px solid #e0dbd4;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.ws-side-head {
+    padding: 1rem 1.25rem 0.5rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #a8a29e;
+}
+.ws-var-fields { flex: 1; overflow-y: auto; padding: 0.25rem 1.25rem 1rem; }
+.ws-var-field { margin-bottom: 0.875rem; }
+.ws-var-field-label {
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #1d4ed8;
+    font-family: 'Courier New', Courier, monospace;
+    margin-bottom: 0.15rem;
+}
+.ws-var-field-hint { font-size: 0.7rem; color: #a8a29e; margin-bottom: 0.3rem; line-height: 1.4; }
+.ws-side-foot { flex-shrink: 0; padding: 0.875rem 1.25rem; border-top: 1px solid #efece7; }
+.ws-draft-note { font-size: 0.7rem; color: #a8a29e; margin-bottom: 0.625rem; line-height: 1.5; }
+
+.ws-preview { flex: 1; overflow: auto; padding: 1.5rem 1.5rem 4rem; min-width: 0; }
+
+/* Each document + all its pages are wrapped by a numbered left spine, so a
+   document reads as one grouped unit and the stacked numbers show there are
+   more below. */
+.ws-doc-block {
+    display: flex;
+    align-items: stretch;
+    gap: 0.9rem;
+    width: max-content;
+    max-width: 100%;
+    margin: 0 auto 2.75rem;
+}
+.ws-doc-spine { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
+.ws-doc-num {
+    flex-shrink: 0;
+    width: 1.9rem;
+    height: 1.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1c1917;
+    color: #faf7f3;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+.ws-doc-rail {
+    flex: 1;
+    width: 3px;
+    min-height: 1.5rem;
+    margin-top: 0.4rem;
+    border-radius: 3px;
+    background: #d6d0ca;
+}
+.ws-doc-content { min-width: 0; }
+.ws-doc-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 1.9rem;            /* keep the name aligned with the number */
+    margin-bottom: 0.7rem;
+}
+.ws-doc-head-left { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.ws-doc-ico { color: #a8a29e; flex-shrink: 0; }
+.ws-doc-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1c1917;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ws-doc-edit { flex-shrink: 0; }
+.ws-doc-pages { display: flex; flex-direction: column; gap: 1.25rem; }
+
+.ws-preview .ql-variable--empty { opacity: 0.6; }
+
+[data-theme="dark"] .ws-overlay { background: #111113; }
+[data-theme="dark"] .ws-bar { background: #212125; border-bottom-color: #3c3c44; }
+[data-theme="dark"] .ws-title { color: #ededf0; }
+[data-theme="dark"] .ws-side { background: #1a1a1d; border-right-color: #3c3c44; }
+[data-theme="dark"] .ws-side-head,
+[data-theme="dark"] .ws-var-field-hint,
+[data-theme="dark"] .ws-draft-note,
+[data-theme="dark"] .ws-saved { color: #6b6b76; }
+[data-theme="dark"] .ws-var-field-label { color: #93c5fd; }
+[data-theme="dark"] .ws-side-foot { border-top-color: #2e2e36; }
+[data-theme="dark"] .ws-doc-num  { background: #ededf0; color: #16161a; }
+[data-theme="dark"] .ws-doc-rail { background: #3c3c44; }
+[data-theme="dark"] .ws-doc-ico  { color: #6b6b76; }
+[data-theme="dark"] .ws-doc-name { color: #ededf0; }
+
 /* Dark mode for new cards */
 [data-theme="dark"] .tpl-card,
 [data-theme="dark"] .doc-card {

@@ -105,6 +105,7 @@ unset($doc);
     <!-- Print zone (hidden; used for sequential printing) -->
     <div id="printZone"></div>
 
+
     <!-- Modal: fill variable values (shared for single doc + full template) -->
     <div id="useModal" class="modal-overlay" aria-hidden="true">
         <div class="modal-box" style="max-width:28rem">
@@ -529,22 +530,14 @@ unset($doc);
             });
         });
 
-        /* ─────────────────────────────────────────────
-           Full template use
-        ───────────────────────────────────────────── */
+        /* ──────────────────────────────
+           "Користи шаблон" → global draft workspace
+           (defined in js/draft-workspace.js, shared by every page; the
+           entered values + inline edits persist across pages)
+        ────────────────────────────── */
         function useTemplate() {
-            if (!DOCS.length) {
-                alert('Овој шаблон нема документи.');
-                return;
-            }
-            var varMap = getVarsFromDocs(DOCS);
-            if (!Object.keys(varMap).length) {
-                printAllDocs(DOCS, {});
-                return;
-            }
-            openUseModal('Користи шаблон: ' + TEMPLATE.name, varMap, function (values) {
-                printAllDocs(DOCS, values);
-            });
+            if (!DOCS.length) { alert('Овој шаблон нема документи.'); return; }
+            if (window.DraftWorkspace) window.DraftWorkspace.open(TEMPLATE.id, TEMPLATE.name);
         }
 
         document.getElementById('btnUseTemplate').addEventListener('click', useTemplate);
@@ -683,7 +676,7 @@ unset($doc);
         renderDocCards();
 
         // Arrived via "Користи шаблон" from the listings page (?use=1) →
-        // launch the download flow automatically, then strip the flag so a
+        // open the draft workspace automatically, then strip the flag so a
         // refresh doesn't re-trigger it.
         (function () {
             var params = new URLSearchParams(window.location.search);

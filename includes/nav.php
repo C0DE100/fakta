@@ -16,3 +16,6 @@
         </button>
     </div>
 </nav>
+<!-- Global drafts (docked on every page): use-template workspace + in-progress document -->
+<script src="js/draft-workspace.js" defer></script>
+<script src="js/draft-document.js" defer></script>
