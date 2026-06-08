@@ -16,12 +16,13 @@ try {
         case 'create':
             $name        = trim($_POST['name'] ?? '');
             $description = trim($_POST['description'] ?? '');
+            $color       = trim($_POST['color'] ?? '');
             if ($name === '') {
                 echo json_encode(['success' => false, 'message' => 'Името е задолжително.']);
                 exit;
             }
-            $stmt = $pdo->prepare('INSERT INTO templates (name, description, created_at, updated_at) VALUES (?, ?, NOW(), NOW())');
-            $stmt->execute([$name, $description !== '' ? $description : null]);
+            $stmt = $pdo->prepare('INSERT INTO templates (name, description, color, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())');
+            $stmt->execute([$name, $description !== '' ? $description : null, $color !== '' ? $color : null]);
             $id = (int) $pdo->lastInsertId();
             echo json_encode(['success' => true, 'id' => $id]);
             break;
@@ -34,14 +35,22 @@ try {
                 echo json_encode(['success' => false, 'message' => 'Невалидни параметри.']);
                 exit;
             }
-            $stmt = $pdo->prepare('UPDATE templates SET name = ?, description = ?, updated_at = NOW() WHERE id = ?');
-            $stmt->execute([$name, $description !== '' ? $description : null, $id]);
+            // Update the colour only when it is part of the request, so a plain
+            // name/description edit doesn't wipe an existing colour.
+            if (array_key_exists('color', $_POST)) {
+                $color = trim($_POST['color']);
+                $stmt = $pdo->prepare('UPDATE templates SET name = ?, description = ?, color = ?, updated_at = NOW() WHERE id = ?');
+                $stmt->execute([$name, $description !== '' ? $description : null, $color !== '' ? $color : null, $id]);
+            } else {
+                $stmt = $pdo->prepare('UPDATE templates SET name = ?, description = ?, updated_at = NOW() WHERE id = ?');
+                $stmt->execute([$name, $description !== '' ? $description : null, $id]);
+            }
             echo json_encode(['success' => true]);
             break;
 
         case 'list':
             $stmt = $pdo->query(
-                'SELECT t.id, t.name, t.description, t.created_at, COUNT(d.id) AS doc_count
+                'SELECT t.id, t.name, t.description, t.color, t.created_at, COUNT(d.id) AS doc_count
                  FROM templates t
                  LEFT JOIN documents d ON d.template_id = t.id
                  GROUP BY t.id

@@ -34,6 +34,13 @@
             </button>
         </div>
 
+        <div class="tpl-search-wrap">
+            <svg class="tpl-search-ico" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+            </svg>
+            <input type="text" id="searchTemplates" class="field tpl-search-input" placeholder="Пребарај шаблони по назив или опис..." autocomplete="off">
+        </div>
+
         <div id="tplGrid" class="tpl-grid"></div>
 
         <div id="tplEmpty" style="display:none" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -60,7 +67,11 @@
             </div>
             <p style="font-size:0.8125rem;color:#78716c;margin-bottom:1rem;">Внеси назив и опис за новиот шаблон.</p>
             <input type="text" id="tplNameInput" class="field" placeholder="пр. Договор за работа..." style="margin-bottom:0.75rem;" autocomplete="off">
-            <textarea id="tplDescInput" class="field" placeholder="Опис (опционално)..." rows="3" style="margin-bottom:1rem;resize:vertical;"></textarea>
+            <textarea id="tplDescInput" class="field" placeholder="Опис (опционално)..." rows="3" style="margin-bottom:0.875rem;resize:vertical;"></textarea>
+            <div class="tpl-color-row">
+                <span class="tpl-color-label">Боја на картичка</span>
+                <div id="tplColorSwatches" class="tpl-swatches"></div>
+            </div>
             <div style="display:flex;gap:0.5rem;justify-content:flex-end">
                 <button id="tplCreateCancel" class="btn-secondary">Откажи</button>
                 <button id="tplCreateConfirm" class="btn-new-client">Креирај</button>
@@ -104,6 +115,40 @@
             return d.innerHTML;
         }
 
+        // ── State, colors & search ──────────────────────────────────────────
+
+        var allTemplates = [];
+        var selectedCreateColor = '';
+
+        var TPL_COLORS = [
+            { key: '',       label: 'Без боја',   sw: '#ffffff' },
+            { key: 'rose',   label: 'Розова',     sw: '#fb7185' },
+            { key: 'amber',  label: 'Килибар',    sw: '#fbbf24' },
+            { key: 'green',  label: 'Зелена',     sw: '#34d399' },
+            { key: 'teal',   label: 'Тиркизна',   sw: '#2dd4bf' },
+            { key: 'blue',   label: 'Сина',       sw: '#60a5fa' },
+            { key: 'violet', label: 'Виолетова',  sw: '#a78bfa' },
+            { key: 'slate',  label: 'Сива',       sw: '#94a3b8' }
+        ];
+
+        function swatchHtml(currentKey) {
+            return TPL_COLORS.map(function (c) {
+                var active = (c.key === (currentKey || '')) ? ' is-active' : '';
+                var cls = 'tpl-swatch' + (c.key === '' ? ' tpl-swatch--none' : '') + active;
+                var style = c.key === '' ? '' : ' style="background:' + c.sw + '"';
+                return '<button type="button" class="' + cls + '" data-color="' + c.key + '" title="' + escapeHtml(c.label) + '"' + style + '></button>';
+            }).join('');
+        }
+
+        function filterTemplates() {
+            var q = (document.getElementById('searchTemplates').value || '').trim().toLowerCase();
+            if (!q) return allTemplates;
+            return allTemplates.filter(function (t) {
+                return ((t.name || '').toLowerCase().indexOf(q) !== -1) ||
+                       ((t.description || '').toLowerCase().indexOf(q) !== -1);
+            });
+        }
+
         // ── Load & render grid ──────────────────────────────────────────────
 
         function loadTemplates() {
@@ -111,7 +156,8 @@
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
                     if (!res.success) return;
-                    renderGrid(res.data || []);
+                    allTemplates = res.data || [];
+                    renderGrid(filterTemplates());
                 });
         }
 
@@ -120,8 +166,11 @@
             var empty = document.getElementById('tplEmpty');
 
             if (!templates.length) {
-                grid.innerHTML = '';
-                empty.style.display = '';
+                // Distinguish "no templates at all" from "no search results".
+                grid.innerHTML = allTemplates.length
+                    ? '<p class="list-msg" style="padding:1.5rem 0;grid-column:1/-1">Нема резултати за пребарувањето.</p>'
+                    : '';
+                empty.style.display = allTemplates.length ? 'none' : '';
                 return;
             }
 
@@ -162,7 +211,9 @@
                       '</button>'
                     : '';
 
-                html += '<div class="tpl-card">' +
+                var colorAttr = tpl.color ? ' data-color="' + escapeHtml(tpl.color) + '"' : '';
+
+                html += '<div class="tpl-card"' + colorAttr + ' data-id="' + tpl.id + '">' +
                     '<div class="tpl-card-name">' + escapeHtml(tpl.name) + '</div>' +
                     '<div class="tpl-card-meta">' + docCount + ' ' + docWord + ' &middot; ' + formatDate(tpl.created_at) + '</div>' +
                     descHtml +
@@ -170,6 +221,11 @@
                     '<div class="tpl-card-actions">' +
                         useHtml +
                         '<a href="pregled-shablon.php?id=' + tpl.id + '" class="btn-secondary tpl-card-open">Отвори &rarr;</a>' +
+                        '<button class="btn-icon-color btn-color-tpl" data-id="' + tpl.id + '" title="Боја на картичка">' +
+                            '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                                '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>' +
+                            '</svg>' +
+                        '</button>' +
                         '<button class="btn-icon-danger btn-delete-tpl" data-id="' + tpl.id + '" data-name="' + escapeHtml(tpl.name) + '" title="Избриши шаблон">' +
                             '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
                                 '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>' +
@@ -186,11 +242,26 @@
         function openCreateModal() {
             document.getElementById('tplNameInput').value = '';
             document.getElementById('tplDescInput').value = '';
+            selectedCreateColor = '';
+            document.getElementById('tplColorSwatches').innerHTML = swatchHtml('');
             document.getElementById('tplCreateModal').classList.add('open');
             document.getElementById('tplCreateModal').removeAttribute('aria-hidden');
             document.body.classList.add('modal-open');
             setTimeout(function () { document.getElementById('tplNameInput').focus(); }, 50);
         }
+
+        // Pick a colour in the create modal.
+        document.getElementById('tplColorSwatches').addEventListener('click', function (e) {
+            var sw = e.target.closest('.tpl-swatch');
+            if (!sw) return;
+            selectedCreateColor = sw.getAttribute('data-color') || '';
+            this.innerHTML = swatchHtml(selectedCreateColor);
+        });
+
+        // Live search.
+        document.getElementById('searchTemplates').addEventListener('input', function () {
+            renderGrid(filterTemplates());
+        });
 
         function closeCreateModal() {
             document.getElementById('tplCreateModal').classList.remove('open');
@@ -221,7 +292,7 @@
             btn.disabled = true;
             btn.textContent = 'Се креира...';
 
-            var params = new URLSearchParams({ action: 'create', name: name, description: description });
+            var params = new URLSearchParams({ action: 'create', name: name, description: description, color: selectedCreateColor });
             fetch('api/template_api.php', { method: 'POST', body: params })
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
@@ -277,6 +348,82 @@
             var name = btn.getAttribute('data-name') || '';
             if (window.DraftWorkspace) window.DraftWorkspace.open(id, name);
         });
+
+        // ── Recolor a card from the listing ─────────────────────────────────
+
+        var colorPopover = null;
+
+        function closeColorPopover() {
+            if (!colorPopover) return;
+            colorPopover.remove();
+            colorPopover = null;
+            document.removeEventListener('mousedown', onOutsidePopover, true);
+        }
+        function onOutsidePopover(e) {
+            if (colorPopover && !colorPopover.contains(e.target) && !e.target.closest('.btn-color-tpl')) {
+                closeColorPopover();
+            }
+        }
+
+        function findTemplate(id) {
+            for (var i = 0; i < allTemplates.length; i++) {
+                if (parseInt(allTemplates[i].id, 10) === id) return allTemplates[i];
+            }
+            return null;
+        }
+
+        function recolorTemplate(id, key) {
+            var tpl = findTemplate(id);
+            if (!tpl) return;
+            var params = new URLSearchParams({
+                action: 'update', id: id, name: tpl.name, description: tpl.description || '', color: key
+            });
+            fetch('api/template_api.php', { method: 'POST', body: params })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res.success) { alert(res.message || 'Грешка при зачувување.'); return; }
+                    tpl.color = key;
+                    var card = document.querySelector('.tpl-card[data-id="' + id + '"]');
+                    if (card) {
+                        if (key) card.setAttribute('data-color', key);
+                        else     card.removeAttribute('data-color');
+                    }
+                })
+                .catch(function () { alert('Грешка при поврзување.'); });
+        }
+
+        function openColorPopover(btn, id) {
+            closeColorPopover();
+            var tpl = findTemplate(id);
+            colorPopover = document.createElement('div');
+            colorPopover.className = 'tpl-color-popover';
+            colorPopover.innerHTML = '<div class="tpl-swatches">' + swatchHtml(tpl ? tpl.color : '') + '</div>';
+            document.body.appendChild(colorPopover);
+
+            var r = btn.getBoundingClientRect();
+            var w = colorPopover.offsetWidth || 188;
+            colorPopover.style.top  = (r.bottom + 6) + 'px';
+            colorPopover.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+
+            colorPopover.querySelector('.tpl-swatches').addEventListener('click', function (e) {
+                var sw = e.target.closest('.tpl-swatch');
+                if (!sw) return;
+                recolorTemplate(id, sw.getAttribute('data-color') || '');
+                closeColorPopover();
+            });
+            setTimeout(function () { document.addEventListener('mousedown', onOutsidePopover, true); }, 0);
+        }
+
+        document.getElementById('tplGrid').addEventListener('click', function (e) {
+            var btn = e.target.closest('.btn-color-tpl');
+            if (!btn) return;
+            e.stopPropagation();
+            openColorPopover(btn, parseInt(btn.getAttribute('data-id'), 10));
+        });
+
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeColorPopover(); });
+        window.addEventListener('resize', closeColorPopover);
+        window.addEventListener('scroll', closeColorPopover, true);
 
         document.getElementById('tplDeleteConfirm').addEventListener('click', function () {
             if (!pendingDeleteId) return;

@@ -91,14 +91,6 @@ foreach ($templateVarMap as $name => $docNames) {
                 Назад
             </a>
             <input type="text" id="docTitleInput" class="doc-title-input" placeholder="Назив на документот...">
-            <button id="btnSave" class="btn-new-client">
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                    <polyline points="17 21 17 13 7 13 7 21"/>
-                    <polyline points="7 3 7 8 15 8"/>
-                </svg>
-                Зачувај документ
-            </button>
         </div>
 
         <!-- Quill toolbar (sticky) -->
@@ -147,6 +139,14 @@ foreach ($templateVarMap as $name => $docNames) {
                         <path d="M8 9h8M8 12h5M8 15h3"/><rect width="18" height="18" x="3" y="3" rx="2"/>
                     </svg>
                     Внеси Променлива
+                </button>
+                <button id="btnSave" class="btn-new-client" title="Зачувај документ">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                        <polyline points="17 21 17 13 7 13 7 21"/>
+                        <polyline points="7 3 7 8 15 8"/>
+                    </svg>
+                    Зачувај документ
                 </button>
             </div>
         </div>
@@ -1088,9 +1088,20 @@ foreach ($templateVarMap as $name => $docNames) {
             return quill ? trimDelta(quill.getContents()) : null;
         }
 
+        // Clear the "title required" error as soon as the user starts typing.
+        document.getElementById('docTitleInput').addEventListener('input', function () {
+            this.classList.remove('input-error');
+        });
+
         document.getElementById('btnSave').addEventListener('click', function () {
-            var name = document.getElementById('docTitleInput').value.trim();
-            if (!name) { document.getElementById('docTitleInput').focus(); return; }
+            var titleInput = document.getElementById('docTitleInput');
+            var name = titleInput.value.trim();
+            if (!name) {
+                titleInput.classList.add('input-error');
+                titleInput.focus();
+                return;
+            }
+            titleInput.classList.remove('input-error');
 
             // Persist only the content for the active layout (collectPages drops
             // the inactive split side so stale content can't linger after a toggle).
