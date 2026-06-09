@@ -179,33 +179,18 @@
             templates.forEach(function (tpl) {
                 var docCount = parseInt(tpl.doc_count, 10) || 0;
                 var docWord = docCount === 1 ? 'документ' : 'документи';
-                var docs = tpl.documents || [];
 
                 var descHtml = tpl.description
                     ? '<div class="tpl-card-desc">' + escapeHtml(tpl.description) + '</div>'
                     : '';
-
-                var docsHtml;
-                if (docs.length) {
-                    docsHtml = '<ul class="tpl-card-docs">' +
-                        docs.slice(0, 4).map(function (n) {
-                            return '<li title="' + escapeHtml(n) + '">' +
-                                '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
-                                escapeHtml(n) + '</li>';
-                        }).join('') +
-                        (docs.length > 4 ? '<li class="tpl-card-docs-more">+' + (docs.length - 4) + ' уште</li>' : '') +
-                        '</ul>';
-                } else {
-                    docsHtml = '<div class="tpl-card-docs-empty">Нема документи</div>';
-                }
 
                 // "Use template" opens the global draft workspace in place (no
                 // navigation). Only shown when there's something to print.
                 var useHtml = docCount
                     ? '<button type="button" class="btn-new-client tpl-card-use" data-use-tpl ' +
                           'data-id="' + tpl.id + '" data-name="' + escapeHtml(tpl.name).replace(/"/g, '&quot;') + '">' +
-                          '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
-                              '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>' +
+                          '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+                              '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>' +
                           '</svg>' +
                           'Користи шаблон' +
                       '</button>'
@@ -214,23 +199,38 @@
                 var colorAttr = tpl.color ? ' data-color="' + escapeHtml(tpl.color) + '"' : '';
 
                 html += '<div class="tpl-card"' + colorAttr + ' data-id="' + tpl.id + '">' +
-                    '<div class="tpl-card-name">' + escapeHtml(tpl.name) + '</div>' +
-                    '<div class="tpl-card-meta">' + docCount + ' ' + docWord + ' &middot; ' + formatDate(tpl.created_at) + '</div>' +
-                    descHtml +
-                    docsHtml +
-                    '<div class="tpl-card-actions">' +
-                        useHtml +
-                        '<a href="pregled-shablon.php?id=' + tpl.id + '" class="btn-secondary tpl-card-open">Отвори &rarr;</a>' +
-                        '<button class="btn-icon-color btn-color-tpl" data-id="' + tpl.id + '" title="Боја на картичка">' +
-                            '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-                                '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>' +
-                            '</svg>' +
-                        '</button>' +
-                        '<button class="btn-icon-danger btn-delete-tpl" data-id="' + tpl.id + '" data-name="' + escapeHtml(tpl.name) + '" title="Избриши шаблон">' +
-                            '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-                                '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>' +
-                            '</svg>' +
-                        '</button>' +
+                    '<div class="tpl-thumb">' +
+                        '<div class="tpl-sheet">' +
+                            '<span class="tpl-thumb-bar"></span>' +
+                            '<div class="tpl-thumb-lines">' +
+                                '<span class="l-title"></span>' +
+                                '<span></span><span></span><span class="short"></span>' +
+                                '<span></span><span></span><span class="short"></span>' +
+                            '</div>' +
+                            '<span class="tpl-thumb-badge">' +
+                                '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+                                docCount +
+                            '</span>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="tpl-card-body">' +
+                        '<div class="tpl-card-name">' + escapeHtml(tpl.name) + '</div>' +
+                        '<div class="tpl-card-meta">' + docCount + ' ' + docWord + ' &middot; ' + formatDate(tpl.created_at) + '</div>' +
+                        descHtml +
+                        '<div class="tpl-card-actions">' +
+                            useHtml +
+                            '<a href="pregled-shablon.php?id=' + tpl.id + '" class="btn-secondary tpl-card-open">Отвори &rarr;</a>' +
+                            '<button class="btn-icon-color btn-color-tpl" data-id="' + tpl.id + '" title="Боја на картичка">' +
+                                '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                                    '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>' +
+                                '</svg>' +
+                            '</button>' +
+                            '<button class="btn-icon-danger btn-delete-tpl" data-id="' + tpl.id + '" data-name="' + escapeHtml(tpl.name) + '" title="Избриши шаблон">' +
+                                '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                                    '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>' +
+                                '</svg>' +
+                            '</button>' +
+                        '</div>' +
                     '</div>' +
                 '</div>';
             });
