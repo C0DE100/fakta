@@ -1,3 +1,9 @@
+<?php
+$navUser    = function_exists('current_user') ? current_user() : null;
+$navCompany = $navUser['company_name'] ?? '';
+$navName    = $navUser['name'] ?? '';
+$logoutUrl  = function_exists('fakta_url') ? fakta_url('logout.php') : 'logout.php';
+?>
 <nav class="bg-white site-nav">
     <div class="nav-inner max-w-7xl mx-auto px-7 py-5 flex items-center justify-between">
         <a href="index.php" class="font-semibold tracking-tight text-slate-900 flex items-center gap-2 no-underline" style="text-decoration:none;color:inherit;">
@@ -7,15 +13,23 @@
             </svg>
             Факта
         </a>
-        <button class="inline-flex items-center gap-2 text-sm font-medium py-2.5 px-4 rounded-lg cursor-pointer select-none bg-white border border-stone-300 text-stone-700 transition-colors hover:bg-stone-50">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            Најава
-        </button>
+        <div class="flex items-center gap-4">
+            <?php if ($navCompany !== ''): ?>
+            <div class="text-right leading-tight hidden sm:block">
+                <div class="text-sm font-semibold text-slate-800"><?= htmlspecialchars($navCompany) ?></div>
+                <?php if ($navName !== ''): ?><div class="text-xs text-slate-400"><?= htmlspecialchars($navName) ?></div><?php endif; ?>
+            </div>
+            <?php endif; ?>
+            <a href="<?= htmlspecialchars($logoutUrl) ?>" class="nav-logout inline-flex items-center gap-2 text-sm font-medium py-2.5 px-4 rounded-lg cursor-pointer select-none no-underline transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>
+                </svg>
+                Одјава
+            </a>
+        </div>
     </div>
 </nav>
+<script>window.FAKTA_CO = <?= json_encode((string)(function_exists('current_company_id') ? (current_company_id() ?? '') : '')) ?>;</script>
 <!-- Global drafts (docked on every page): use-template workspace + in-progress document -->
 <script src="js/draft-workspace.js" defer></script>
 <script src="js/draft-document.js" defer></script>

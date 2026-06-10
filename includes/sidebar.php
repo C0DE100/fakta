@@ -3,6 +3,9 @@
 // Values: 'home' | 'kreraj-faktura' | 'pregled-fakturi' | 'tipski-dokumenti' | 'kreraj-dokument'
 $currentPage = $currentPage ?? 'home';
 $invoicesOpen = in_array($currentPage, ['kreraj-faktura', 'pregled-fakturi']);
+// Only admins see invoices for now (vraboten + praktikant don't).
+$sidebarRole = function_exists('current_role') ? current_role() : null;
+$canSeeInvoices = $sidebarRole === 'admin';
 ?>
 <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
@@ -29,6 +32,7 @@ $invoicesOpen = in_array($currentPage, ['kreraj-faktura', 'pregled-fakturi']);
             <span class="sidebar-btn-label">Клиенти</span>
         </button>
 
+        <?php if ($canSeeInvoices): ?>
         <div class="sidebar-group">
             <button class="sidebar-btn sidebar-btn--parent<?= $invoicesOpen ? ' sidebar-btn--open sidebar-btn--active' : '' ?>" id="btnInvoicesToggle" title="Фактури">
                 <svg xmlns="http://www.w3.org/2000/svg" class="sidebar-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -50,6 +54,7 @@ $invoicesOpen = in_array($currentPage, ['kreraj-faktura', 'pregled-fakturi']);
                 </a>
             </div>
         </div>
+        <?php endif; ?>
 
         <a href="tipski-dokumenti.php" class="sidebar-btn<?= in_array($currentPage, ['tipski-dokumenti', 'kreraj-dokument']) ? ' sidebar-btn--active' : '' ?>" title="Типски Документи">
             <svg xmlns="http://www.w3.org/2000/svg" class="sidebar-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

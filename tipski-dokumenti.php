@@ -1,4 +1,8 @@
-<?php $currentPage = 'tipski-dokumenti'; ?>
+<?php
+require_once __DIR__ . '/includes/auth.php';
+require_login();
+$currentPage = 'tipski-dokumenti';
+?>
 <!DOCTYPE html>
 <html lang="mk">
 <head>

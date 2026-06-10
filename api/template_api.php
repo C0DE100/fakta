@@ -1,12 +1,14 @@
 <?php
 
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../classes/Database.php';
+define('FAKTA_API', true);
+require_once __DIR__ . '/../includes/auth.php';
+
+require_login();
 
 header('Content-Type: application/json; charset=utf-8');
 
-$db  = new Database(DB_HOST, DB_NAME, DB_USER, DB_PASS);
-$pdo = $db->getConnection();
+$pdo = $GLOBALS['fakta_db']->getConnection();
+$companyId = current_company_id();
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
@@ -21,8 +23,8 @@ try {
                 echo json_encode(['success' => false, 'message' => 'Името е задолжително.']);
                 exit;
             }
-            $stmt = $pdo->prepare('INSERT INTO templates (name, description, color, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())');
-            $stmt->execute([$name, $description !== '' ? $description : null, $color !== '' ? $color : null]);
+            $stmt = $pdo->prepare('INSERT INTO templates (company_id, name, description, color, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())');
+            $stmt->execute([$companyId, $name, $description !== '' ? $description : null, $color !== '' ? $color : null]);
             $id = (int) $pdo->lastInsertId();
             echo json_encode(['success' => true, 'id' => $id]);
             break;
@@ -39,27 +41,30 @@ try {
             // name/description edit doesn't wipe an existing colour.
             if (array_key_exists('color', $_POST)) {
                 $color = trim($_POST['color']);
-                $stmt = $pdo->prepare('UPDATE templates SET name = ?, description = ?, color = ?, updated_at = NOW() WHERE id = ?');
-                $stmt->execute([$name, $description !== '' ? $description : null, $color !== '' ? $color : null, $id]);
+                $stmt = $pdo->prepare('UPDATE templates SET name = ?, description = ?, color = ?, updated_at = NOW() WHERE id = ? AND company_id = ?');
+                $stmt->execute([$name, $description !== '' ? $description : null, $color !== '' ? $color : null, $id, $companyId]);
             } else {
-                $stmt = $pdo->prepare('UPDATE templates SET name = ?, description = ?, updated_at = NOW() WHERE id = ?');
-                $stmt->execute([$name, $description !== '' ? $description : null, $id]);
+                $stmt = $pdo->prepare('UPDATE templates SET name = ?, description = ?, updated_at = NOW() WHERE id = ? AND company_id = ?');
+                $stmt->execute([$name, $description !== '' ? $description : null, $id, $companyId]);
             }
             echo json_encode(['success' => true]);
             break;
 
         case 'list':
-            $stmt = $pdo->query(
+            $stmt = $pdo->prepare(
                 'SELECT t.id, t.name, t.description, t.color, t.created_at, COUNT(d.id) AS doc_count
                  FROM templates t
                  LEFT JOIN documents d ON d.template_id = t.id
+                 WHERE t.company_id = ?
                  GROUP BY t.id
                  ORDER BY t.created_at DESC'
             );
+            $stmt->execute([$companyId]);
             $data = $stmt->fetchAll();
 
             // Attach the list of document names belonging to each template.
-            $docStmt = $pdo->query('SELECT template_id, name FROM documents ORDER BY sort_order ASC, id ASC');
+            $docStmt = $pdo->prepare('SELECT template_id, name FROM documents WHERE company_id = ? ORDER BY sort_order ASC, id ASC');
+            $docStmt->execute([$companyId]);
             $docsByTemplate = [];
             foreach ($docStmt->fetchAll() as $row) {
                 $docsByTemplate[(int) $row['template_id']][] = $row['name'];
@@ -78,8 +83,8 @@ try {
                 echo json_encode(['success' => false, 'message' => 'Невалиден ID.']);
                 exit;
             }
-            $stmt = $pdo->prepare('DELETE FROM templates WHERE id = ?');
-            $stmt->execute([$id]);
+            $stmt = $pdo->prepare('DELETE FROM templates WHERE id = ? AND company_id = ?');
+            $stmt->execute([$id, $companyId]);
             echo json_encode(['success' => true]);
             break;
 

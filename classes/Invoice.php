@@ -21,10 +21,10 @@ class Invoice
      * Confirm: is the FK column named `client_id`?
      * Confirm: is `date` stored as DATE or DATETIME?
      */
-    public function getList(string $search, string $month, int $clientId, int $page): array
+    public function getList(int $companyId, string $search, string $month, int $clientId, int $page): array
     {
-        $conditions = ['1=1'];
-        $params     = [];
+        $conditions = ['i.company_id = :company_id'];
+        $params     = [':company_id' => $companyId];
 
         if ($search !== '') {
             $like = '%' . $search . '%';

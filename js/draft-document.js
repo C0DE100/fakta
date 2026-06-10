@@ -13,7 +13,8 @@
 (function () {
     'use strict';
 
-    var ACTIVE = 'fakta_active_doc_draft';
+    // Per-company namespace (window.FAKTA_CO set in nav.php) keeps tenants' drafts apart.
+    var ACTIVE = 'fakta_active_doc_draft_co' + (window.FAKTA_CO || '0');
     var pill = null;
 
     function read() {

@@ -1,3 +1,17 @@
+<?php
+require_once __DIR__ . '/includes/auth.php';
+require_login();
+
+// Super-admin manages tenants only — keep them out of the company app.
+if (current_role() === 'super_admin') {
+    header('Location: ' . fakta_url('admin/index.php'));
+    exit;
+}
+
+$role = current_role();
+// Only admins see invoices for now (vraboten + praktikant don't).
+$canSeeInvoices = $role === 'admin';
+?>
 <!DOCTYPE html>
 <html lang="mk">
 <head>
@@ -31,6 +45,7 @@
         </div>
 
         <!-- Фактури -->
+        <?php if ($canSeeInvoices): ?>
         <div id="sectionInvoices" class="mb-6">
             <div class="section-label">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -61,6 +76,7 @@
                 <div id="invoicesPager" class="flex flex-wrap gap-1.5 px-4 py-3"></div>
             </div>
         </div>
+        <?php endif; ?>
 
         <!-- Клиенти -->
         <div id="sectionClients" class="mb-6">

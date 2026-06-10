@@ -15,7 +15,10 @@
 (function () {
     'use strict';
 
-    var STORE_ACTIVE = 'fakta_active_draft';            // {id, name}
+    // Namespace draft keys per company so a shared browser never leaks
+    // one tenant's drafts to another (window.FAKTA_CO is set in nav.php).
+    var CO = '_co' + (window.FAKTA_CO || '0');
+    var STORE_ACTIVE = 'fakta_active_draft' + CO;       // {id, name}
     var QUILL_JS  = 'https://cdn.quilljs.com/1.3.7/quill.js';
     var QUILL_CSS = 'https://cdn.quilljs.com/1.3.7/quill.snow.css';
 
@@ -46,7 +49,7 @@
             else   sessionStorage.removeItem(STORE_ACTIVE);
         } catch (e) {}
     }
-    function valsKey(id) { return 'fakta_tpl_vals_' + id; }
+    function valsKey(id) { return 'fakta_tpl_vals_' + id + CO; }
     function loadVals(id) {
         try { return JSON.parse(sessionStorage.getItem(valsKey(id))) || {}; }
         catch (e) { return {}; }

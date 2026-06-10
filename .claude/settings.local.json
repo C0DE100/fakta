@@ -1,7 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Bash(wc -l /c/xampp/htdocs/advokatski-fakturi/**/*.php)"
+      "Bash(wc -l /c/xampp/htdocs/advokatski-fakturi/**/*.php)",
+      "Read(//c/xampp/mysql/bin/**)",
+      "Bash(./mysqld.exe --standalone)",
+      "Bash(echo \"started, pid $!\")",
+      "Bash(/c/xampp/php/php.exe -v)",
+      "Bash(/c/xampp/php/php.exe seed/setup_tenancy.php)",
+      "Bash(./mysql.exe -u root lawyer -e ' *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost/fakta/index.php)",
+      "Bash(curl -s -i http://localhost/fakta/index.php)",
+      "Read(//c/xampp/apache/bin/**)",
+      "Bash(./httpd.exe -k start)",
+      "Bash(/c/xampp/php/php.exe -S 127.0.0.1:8099)",
+      "Bash(echo \"dev server pid $!\")",
+      "Bash(curl -s -i http://127.0.0.1:8099/index.php)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://127.0.0.1:8099/landing.php)",
+      "Bash(curl -s -i \"http://127.0.0.1:8099/api/client_api.php?action=get_all\")",
+      "Bash(curl -s \"http://127.0.0.1:8099/api/client_api.php?action=get_all\")"
     ]
   }
 }

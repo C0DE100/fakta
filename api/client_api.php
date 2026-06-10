@@ -1,15 +1,18 @@
 <?php
 
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../classes/Database.php';
+define('FAKTA_API', true);
+require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../classes/Encryption.php';
 require_once __DIR__ . '/../classes/Client.php';
 
+require_login();
+
 header('Content-Type: application/json; charset=utf-8');
 
-$db = new Database(DB_HOST, DB_NAME, DB_USER, DB_PASS);
+$db = $GLOBALS['fakta_db'];
 $enc = new Encryption(ENCRYPTION_KEY);
 $client = new Client($db, $enc);
+$companyId = current_company_id();
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
@@ -28,7 +31,7 @@ try {
                 exit;
             }
 
-            $id = $client->createCompany($companyName, $headquarters, $embs, $edb, $manager);
+            $id = $client->createCompany($companyId, $companyName, $headquarters, $embs, $edb, $manager);
             echo json_encode(['success' => true, 'message' => 'Клиентот е успешно креиран.', 'id' => $id]);
             break;
 
@@ -43,12 +46,12 @@ try {
                 exit;
             }
 
-            $id = $client->createIndividual($fullName, $address, $embg, $idCardNumber);
+            $id = $client->createIndividual($companyId, $fullName, $address, $embg, $idCardNumber);
             echo json_encode(['success' => true, 'message' => 'Клиентот е успешно креиран.', 'id' => $id]);
             break;
 
         case 'get_all':
-            $clients = $client->getAll();
+            $clients = $client->getAll($companyId);
             echo json_encode(['success' => true, 'data' => $clients]);
             break;
 
@@ -58,7 +61,7 @@ try {
                 echo json_encode(['success' => false, 'message' => 'Невалиден ID.']);
                 exit;
             }
-            $data = $client->getById($id);
+            $data = $client->getById($id, $companyId);
             echo json_encode(['success' => true, 'data' => $data]);
             break;
 

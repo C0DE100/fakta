@@ -1,21 +1,21 @@
 <?php
+require_once __DIR__ . '/includes/auth.php';
+require_login();
 $currentPage = 'tipski-dokumenti';
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/classes/Database.php';
 
+$companyId  = current_company_id();
 $templateId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if (!$templateId) { header('Location: tipski-dokumenti.php'); exit; }
 
-$db = new Database(DB_HOST, DB_NAME, DB_USER, DB_PASS);
-$pdo = $db->getConnection();
+$pdo = $GLOBALS['fakta_db']->getConnection();
 
-$stmt = $pdo->prepare('SELECT * FROM templates WHERE id = ?');
-$stmt->execute([$templateId]);
+$stmt = $pdo->prepare('SELECT * FROM templates WHERE id = ? AND company_id = ?');
+$stmt->execute([$templateId, $companyId]);
 $template = $stmt->fetch();
 if (!$template) { header('Location: tipski-dokumenti.php'); exit; }
 
-$stmt = $pdo->prepare('SELECT * FROM documents WHERE template_id = ? ORDER BY sort_order ASC, id ASC');
-$stmt->execute([$templateId]);
+$stmt = $pdo->prepare('SELECT * FROM documents WHERE template_id = ? AND company_id = ? ORDER BY sort_order ASC, id ASC');
+$stmt->execute([$templateId, $companyId]);
 $docs = $stmt->fetchAll();
 foreach ($docs as &$doc) {
     $doc['pages']     = json_decode($doc['pages'],     true) ?: [];

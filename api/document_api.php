@@ -1,12 +1,14 @@
 <?php
 
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../classes/Database.php';
+define('FAKTA_API', true);
+require_once __DIR__ . '/../includes/auth.php';
+
+require_login();
 
 header('Content-Type: application/json; charset=utf-8');
 
-$db  = new Database(DB_HOST, DB_NAME, DB_USER, DB_PASS);
-$pdo = $db->getConnection();
+$pdo = $GLOBALS['fakta_db']->getConnection();
+$companyId = current_company_id();
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
@@ -33,15 +35,23 @@ try {
                 $variables = '[]';
             }
 
-            $stmt = $pdo->prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 FROM documents WHERE template_id = ?');
-            $stmt->execute([$templateId]);
+            // The template must belong to the current company.
+            $own = $pdo->prepare('SELECT 1 FROM templates WHERE id = ? AND company_id = ?');
+            $own->execute([$templateId, $companyId]);
+            if (!$own->fetchColumn()) {
+                echo json_encode(['success' => false, 'message' => 'Шаблонот не е пронајден.']);
+                exit;
+            }
+
+            $stmt = $pdo->prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 FROM documents WHERE template_id = ? AND company_id = ?');
+            $stmt->execute([$templateId, $companyId]);
             $sortOrder = (int) $stmt->fetchColumn();
 
             $stmt = $pdo->prepare(
-                'INSERT INTO documents (template_id, name, is_split, pages, variables, sort_order, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())'
+                'INSERT INTO documents (company_id, template_id, name, is_split, pages, variables, sort_order, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())'
             );
-            $stmt->execute([$templateId, $name, $isSplit ? 1 : 0, $pages, $variables, $sortOrder]);
+            $stmt->execute([$companyId, $templateId, $name, $isSplit ? 1 : 0, $pages, $variables, $sortOrder]);
             echo json_encode(['success' => true, 'id' => (int) $pdo->lastInsertId()]);
             break;
 
@@ -66,9 +76,9 @@ try {
             }
 
             $stmt = $pdo->prepare(
-                'UPDATE documents SET name = ?, is_split = ?, pages = ?, variables = ?, updated_at = NOW() WHERE id = ?'
+                'UPDATE documents SET name = ?, is_split = ?, pages = ?, variables = ?, updated_at = NOW() WHERE id = ? AND company_id = ?'
             );
-            $stmt->execute([$name, $isSplit ? 1 : 0, $pages, $variables, $id]);
+            $stmt->execute([$name, $isSplit ? 1 : 0, $pages, $variables, $id, $companyId]);
             echo json_encode(['success' => true]);
             break;
 
@@ -78,8 +88,8 @@ try {
                 echo json_encode(['success' => false, 'message' => 'Невалиден ID.']);
                 exit;
             }
-            $stmt = $pdo->prepare('SELECT * FROM documents WHERE id = ?');
-            $stmt->execute([$id]);
+            $stmt = $pdo->prepare('SELECT * FROM documents WHERE id = ? AND company_id = ?');
+            $stmt->execute([$id, $companyId]);
             $doc = $stmt->fetch();
             if (!$doc) {
                 echo json_encode(['success' => false, 'message' => 'Документот не е пронајден.']);
@@ -96,8 +106,8 @@ try {
                 echo json_encode(['success' => false, 'message' => 'Невалиден template_id.']);
                 exit;
             }
-            $stmt = $pdo->prepare('SELECT * FROM documents WHERE template_id = ? ORDER BY sort_order ASC');
-            $stmt->execute([$templateId]);
+            $stmt = $pdo->prepare('SELECT * FROM documents WHERE template_id = ? AND company_id = ? ORDER BY sort_order ASC');
+            $stmt->execute([$templateId, $companyId]);
             $docs = $stmt->fetchAll();
             foreach ($docs as &$doc) {
                 $doc['pages']     = json_decode($doc['pages'],     true) ?: [];
@@ -113,8 +123,8 @@ try {
                 echo json_encode(['success' => false, 'message' => 'Невалиден ID.']);
                 exit;
             }
-            $stmt = $pdo->prepare('DELETE FROM documents WHERE id = ?');
-            $stmt->execute([$id]);
+            $stmt = $pdo->prepare('DELETE FROM documents WHERE id = ? AND company_id = ?');
+            $stmt->execute([$id, $companyId]);
             echo json_encode(['success' => true]);
             break;
 

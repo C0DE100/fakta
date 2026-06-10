@@ -18,17 +18,19 @@ class Client
     }
 
     public function createCompany(
+        int $companyId,
         string $companyName,
         string $headquarters,
         string $embs,
         string $edb,
         string $manager
     ): int {
-        $sql = "INSERT INTO clients (type, company_name, headquarters, embs, edb, manager, created_at)
-                VALUES (:type, :company_name, :headquarters, :embs, :edb, :manager, NOW())";
+        $sql = "INSERT INTO clients (company_id, type, company_name, headquarters, embs, edb, manager, created_at)
+                VALUES (:company_id, :type, :company_name, :headquarters, :embs, :edb, :manager, NOW())";
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
+            ':company_id'   => $companyId,
             ':type'         => 'company',
             ':company_name' => $companyName,
             ':headquarters' => $headquarters,
@@ -41,16 +43,18 @@ class Client
     }
 
     public function createIndividual(
+        int $companyId,
         string $fullName,
         string $address,
         string $embg,
         string $idCardNumber
     ): int {
-        $sql = "INSERT INTO clients (type, full_name, address, embg, id_card_number, created_at)
-                VALUES (:type, :full_name, :address, :embg, :id_card_number, NOW())";
+        $sql = "INSERT INTO clients (company_id, type, full_name, address, embg, id_card_number, created_at)
+                VALUES (:company_id, :type, :full_name, :address, :embg, :id_card_number, NOW())";
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
+            ':company_id'     => $companyId,
             ':type'           => 'individual',
             ':full_name'      => $fullName,
             ':address'        => $address,
@@ -61,21 +65,21 @@ class Client
         return (int) $this->db->lastInsertId();
     }
 
-    public function getAll(): array
+    public function getAll(int $companyId): array
     {
-        $sql = "SELECT * FROM clients ORDER BY created_at DESC";
+        $sql = "SELECT * FROM clients WHERE company_id = :company_id ORDER BY created_at DESC";
         $stmt = $this->db->prepare($sql);
-        $stmt->execute();
+        $stmt->execute([':company_id' => $companyId]);
         $clients = $stmt->fetchAll();
 
         return array_map(fn($client) => $this->decryptClient($client), $clients);
     }
 
-    public function getById(int $id): ?array
+    public function getById(int $id, int $companyId): ?array
     {
-        $sql = "SELECT * FROM clients WHERE id = :id";
+        $sql = "SELECT * FROM clients WHERE id = :id AND company_id = :company_id";
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([':id' => $id]);
+        $stmt->execute([':id' => $id, ':company_id' => $companyId]);
         $client = $stmt->fetch();
 
         return $client ? $this->decryptClient($client) : null;

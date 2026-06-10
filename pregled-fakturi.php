@@ -1,3 +1,7 @@
+<?php
+require_once __DIR__ . '/includes/auth.php';
+require_role('admin'); // invoices are admin-only for now
+?>
 <!DOCTYPE html>
 <html lang="mk">
 <head>

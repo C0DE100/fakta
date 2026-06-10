@@ -1,17 +1,18 @@
 <?php
+require_once __DIR__ . '/includes/auth.php';
+require_login();
 $currentPage = 'kreraj-dokument';
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/classes/Database.php';
+
+$companyId  = current_company_id();
+$pdo        = $GLOBALS['fakta_db']->getConnection();
 
 $docId      = isset($_GET['doc_id'])      ? (int)$_GET['doc_id']      : 0;
 $templateId = isset($_GET['template_id']) ? (int)$_GET['template_id'] : 0;
 $editDoc    = null;
 
 if ($docId) {
-    $db  = new Database(DB_HOST, DB_NAME, DB_USER, DB_PASS);
-    $pdo = $db->getConnection();
-    $stmt = $pdo->prepare('SELECT * FROM documents WHERE id = ?');
-    $stmt->execute([$docId]);
+    $stmt = $pdo->prepare('SELECT * FROM documents WHERE id = ? AND company_id = ?');
+    $stmt->execute([$docId, $companyId]);
     $editDoc = $stmt->fetch();
     if ($editDoc) {
         $editDoc['pages'] = json_decode($editDoc['pages'], true) ?: [];
@@ -24,18 +25,22 @@ if (!$templateId) {
     exit;
 }
 
+// The template must belong to the current company before we render its editor.
+$ownStmt = $pdo->prepare('SELECT 1 FROM templates WHERE id = ? AND company_id = ?');
+$ownStmt->execute([$templateId, $companyId]);
+if (!$ownStmt->fetchColumn()) {
+    header('Location: tipski-dokumenti.php');
+    exit;
+}
+
 // Variables already used by the other documents in this template. The editor
 // offers these as one-click suggestions so variable names stay consistent
 // across every document in the template.
-if (!isset($pdo)) {
-    $db  = new Database(DB_HOST, DB_NAME, DB_USER, DB_PASS);
-    $pdo = $db->getConnection();
-}
 $templateVarMap = []; // name => [docName, ...]
 $prefillHeader  = '';  // header/footer of the latest document in the template,
 $prefillFooter  = '';  // used to seed a brand-new document (not when editing).
-$stmt = $pdo->prepare('SELECT id, name, variables, pages FROM documents WHERE template_id = ? ORDER BY sort_order ASC, id ASC');
-$stmt->execute([$templateId]);
+$stmt = $pdo->prepare('SELECT id, name, variables, pages FROM documents WHERE template_id = ? AND company_id = ? ORDER BY sort_order ASC, id ASC');
+$stmt->execute([$templateId, $companyId]);
 foreach ($stmt->fetchAll() as $row) {
     if ($docId && (int)$row['id'] === $docId) continue; // skip the doc being edited
     $vars = json_decode($row['variables'], true) ?: [];
@@ -261,8 +266,11 @@ foreach ($templateVarMap as $name => $docNames) {
         // Local auto-saved draft of this document (resumable via the bottom-right
         // "creating document" pill). Keyed by editing context so the new-doc draft
         // and each edited-doc draft stay separate.
-        var DOC_DRAFT_KEY    = 'fakta_doc_draft_' + (DOC_ID ? 'd' + DOC_ID : 't' + TEMPLATE_ID + '_new');
-        var DOC_DRAFT_ACTIVE = 'fakta_active_doc_draft';
+        // Per-company namespace (window.FAKTA_CO set in nav.php) keeps tenants' drafts apart;
+        // DOC_DRAFT_ACTIVE must stay in sync with js/draft-document.js.
+        var DOC_CO           = '_co' + (window.FAKTA_CO || '0');
+        var DOC_DRAFT_KEY    = 'fakta_doc_draft_' + (DOC_ID ? 'd' + DOC_ID : 't' + TEMPLATE_ID + '_new') + DOC_CO;
+        var DOC_DRAFT_ACTIVE = 'fakta_active_doc_draft' + DOC_CO;
         var _saving          = false; // set on a real save so we don't re-draft on redirect
 
         /* ─────────────────────────────────────────────

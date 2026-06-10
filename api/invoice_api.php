@@ -1,13 +1,17 @@
 <?php
 
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../classes/Database.php';
+define('FAKTA_API', true);
+require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../classes/Invoice.php';
+
+// Invoices are admin-only for now (employees can't see them).
+require_role('admin');
 
 header('Content-Type: application/json; charset=utf-8');
 
-$db      = new Database(DB_HOST, DB_NAME, DB_USER, DB_PASS);
+$db      = $GLOBALS['fakta_db'];
 $invoice = new Invoice($db);
+$companyId = current_company_id();
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
@@ -20,7 +24,7 @@ try {
             $clientId = (int) ($_GET['client_id'] ?? 0);
             $page     = max(1, (int) ($_GET['page'] ?? 1));
 
-            $result = $invoice->getList($search, $month, $clientId, $page);
+            $result = $invoice->getList($companyId, $search, $month, $clientId, $page);
             echo json_encode(['success' => true] + $result);
             break;
 
