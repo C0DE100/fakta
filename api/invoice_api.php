@@ -28,6 +28,14 @@ try {
             echo json_encode(['success' => true] + $result);
             break;
 
+        case 'get_stats':
+            echo json_encode([
+                'success' => true,
+                'stats'   => $invoice->getStats($companyId, date('Y-m')),
+                'recent'  => $invoice->getRecent($companyId, 5),
+            ]);
+            break;
+
         default:
             echo json_encode(['success' => false, 'message' => 'Непозната акција.']);
     }

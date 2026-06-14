@@ -86,6 +86,7 @@ $(document).ready(function () {
     });
 
     let allClients = [];
+    let editingClientId = null; // null = create mode; otherwise the id being edited
     const PAGE_SIZE = 15;
 
     const MK_MONTHS = ['Јануари','Февруари','Март','Април','Мај','Јуни','Јули','Август','Септември','Октомври','Ноември','Декември'];
@@ -102,6 +103,9 @@ $(document).ready(function () {
     function closeModal() {
         $('#clientModal').removeClass('open').attr('aria-hidden', 'true');
         $('body').removeClass('modal-open');
+        editingClientId = null;
+        $('#panelFormCompany .profile-hero-title').text('Ново правно лице');
+        $('#panelFormIndividual .profile-hero-title').text('Ново физичко лице');
         // Reset to default step after CSS transition
         setTimeout(function () {
             $('.modal-panel').removeClass('active');
@@ -137,16 +141,51 @@ $(document).ready(function () {
     // ---- Clients ----
 
     $('#btnCompany').on('click', function () {
+        editingClientId = null;
+        $('#panelFormCompany .profile-hero-title').text('Ново правно лице');
         $('#formCompany')[0].reset();
         $('#alertCompany').hide();
+        resetModalAvatar('#avatarCompany');
         switchModalPanel('panelFormCompany');
     });
 
     $('#btnIndividual').on('click', function () {
+        editingClientId = null;
+        $('#panelFormIndividual .profile-hero-title').text('Ново физичко лице');
         $('#formIndividual')[0].reset();
         $('#alertIndividual').hide();
+        resetModalAvatar('#avatarIndividual');
         switchModalPanel('panelFormIndividual');
     });
+
+    // Open the create modal directly on a pre-filled form, in edit mode.
+    function openEditClient(client) {
+        editingClientId = client.id;
+        if (client.type === 'company') {
+            $('#pravno_naziv').val(client.company_name || '');
+            $('#pravno_sediste').val(client.headquarters || '');
+            $('#pravno_embs').val(client.embs || '');
+            $('#pravno_edb').val(client.edb || '');
+            $('#pravno_upravitel').val(client.manager || '');
+            $('#pravno_email').val(client.email || '');
+            $('#pravno_phone').val(client.phone || '');
+            $('#alertCompany').hide();
+            updateModalAvatar('#pravno_naziv', '#avatarCompany');
+            $('#panelFormCompany .profile-hero-title').text('Уреди правно лице');
+            openModal('panelFormCompany');
+        } else {
+            $('#fizicko_ime').val(client.full_name || '');
+            $('#fizicko_adresa').val(client.address || '');
+            $('#fizicko_embg').val(client.embg || '');
+            $('#fizicko_licna').val(client.id_card_number || '');
+            $('#fizicko_email').val(client.email || '');
+            $('#fizicko_phone').val(client.phone || '');
+            $('#alertIndividual').hide();
+            updateModalAvatar('#fizicko_ime', '#avatarIndividual');
+            $('#panelFormIndividual .profile-hero-title').text('Уреди физичко лице');
+            openModal('panelFormIndividual');
+        }
+    }
 
     $('#formCompany, #formIndividual').on('submit', function (e) {
         e.preventDefault();
@@ -154,16 +193,33 @@ $(document).ready(function () {
         const $btn    = $form.find('button[type="submit"]');
         const alertId = '#' + $form.data('alert');
 
+        const isEdit  = editingClientId !== null;
+        const isCo    = $form.attr('id') === 'formCompany';
+        const action  = isEdit ? (isCo ? 'update_company' : 'update_individual') : $form.data('action');
+        let   payload = $form.serialize() + '&action=' + action;
+        if (isEdit) payload += '&id=' + editingClientId;
+
         $btn.prop('disabled', true).text('Се зачувува...');
 
         $.ajax({
             url: 'api/client_api.php',
             type: 'POST',
-            data: $form.serialize() + '&action=' + $form.data('action'),
+            data: payload,
             dataType: 'json',
             success: function (res) {
-                showAlert(alertId, res.success ? 'ok' : 'err', res.message);
-                if (res.success) { $form[0].reset(); loadClients(); loadClientsFilter(); }
+                if (res.success) {
+                    if (isEdit) {
+                        closeModal();
+                    } else {
+                        showAlert(alertId, 'ok', res.message);
+                        $form[0].reset();
+                        resetModalAvatar(isCo ? '#avatarCompany' : '#avatarIndividual');
+                    }
+                    loadClients();
+                    loadClientsFilter();
+                } else {
+                    showAlert(alertId, 'err', res.message);
+                }
             },
             error: function () {
                 showAlert(alertId, 'err', 'Грешка при комуникација со серверот.');
@@ -195,9 +251,23 @@ $(document).ready(function () {
         const q = $('#searchClients').val().trim().toLowerCase();
         if (!q) return allClients;
         return allClients.filter(function (c) {
-            const name = (c.type === 'company' ? c.company_name : c.full_name) || '';
-            return name.toLowerCase().indexOf(q) !== -1;
+            const name  = (c.type === 'company' ? c.company_name : c.full_name) || '';
+            const email = c.email || '';
+            const phone = c.phone || '';
+            return (name + ' ' + email + ' ' + phone).toLowerCase().indexOf(q) !== -1;
         });
+    }
+
+    // SVG snippets reused across client cards
+    const ICON_COMPANY    = '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>';
+    const ICON_INDIVIDUAL = '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>';
+    const ICON_MAIL       = '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>';
+    const ICON_PHONE      = '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>';
+    const ICON_EDIT       = '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
+    const ICON_TRASH      = '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>';
+
+    function svgIcon(cls, paths) {
+        return '<svg xmlns="http://www.w3.org/2000/svg" class="' + cls + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>';
     }
 
     function renderClients(clients, page) {
@@ -208,15 +278,46 @@ $(document).ready(function () {
         if (!total) { $('#clientsList').html('<p class="list-msg">Нема резултати.</p>'); $('#clientsPager').empty(); return; }
 
         const slice = clients.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-        let html  = '';
+        let cards = '';
         $.each(slice, function (_, c) {
-            const name  = c.type === 'company' ? c.company_name : c.full_name;
-            const badge = c.type === 'company'
-                ? '<span class="badge-company">Правно лице</span>'
-                : '<span class="badge-individual">Физичко лице</span>';
-            html += '<div class="client-row" data-id="' + c.id + '"><span>' + escapeHtml(name) + '</span>' + badge + '</div>';
+            const name    = (c.type === 'company' ? c.company_name : c.full_name) || '';
+            const isCo    = c.type === 'company';
+            const typeIco = svgIcon('client-type-icon', isCo ? ICON_COMPANY : ICON_INDIVIDUAL);
+            const typeTxt = isCo ? 'Правно лице' : 'Физичко лице';
+
+            const email = c.email
+                ? '<div class="client-info-row">' + svgIcon('client-info-icon', ICON_MAIL) + '<span>' + escapeHtml(c.email) + '</span></div>'
+                : '<div class="client-info-row client-info-empty">' + svgIcon('client-info-icon', ICON_MAIL) + '<span>Нема е-пошта</span></div>';
+            const phone = c.phone
+                ? '<div class="client-info-row">' + svgIcon('client-info-icon', ICON_PHONE) + '<span>' + escapeHtml(c.phone) + '</span></div>'
+                : '<div class="client-info-row client-info-empty">' + svgIcon('client-info-icon', ICON_PHONE) + '<span>Нема телефон</span></div>';
+
+            let footer;
+            if (c.created_by_name) {
+                const cc = avatarColor(c.created_by_name);
+                footer = '<div class="client-creator-avatar" style="background:' + cc.bg + ';color:' + cc.fg + '">' + initials(c.created_by_name) + '</div>'
+                       + '<span>Креирано од <strong>' + escapeHtml(c.created_by_name) + '</strong></span>';
+            } else {
+                footer = '<div class="client-creator-avatar client-creator-avatar--unknown">?</div><span>Креатор непознат</span>';
+            }
+
+            cards += '<div class="client-card" data-id="' + c.id + '">'
+                +   '<div class="client-card-actions">'
+                +     '<button type="button" class="card-action" data-edit="' + c.id + '" title="Уреди" aria-label="Уреди">' + svgIcon('card-action-icon', ICON_EDIT) + '</button>'
+                +     '<button type="button" class="card-action card-action--danger" data-delete="' + c.id + '" title="Избриши" aria-label="Избриши">' + svgIcon('card-action-icon', ICON_TRASH) + '</button>'
+                +   '</div>'
+                +   '<div class="client-card-top">'
+                +     '<div class="client-avatar">' + initials(name) + '</div>'
+                +     '<div class="client-card-id">'
+                +       '<span class="client-card-name">' + escapeHtml(name) + '</span>'
+                +       '<span class="client-type-badge" title="' + typeTxt + '">' + typeIco + typeTxt + '</span>'
+                +     '</div>'
+                +   '</div>'
+                +   '<div class="client-card-info">' + email + phone + '</div>'
+                +   '<div class="client-card-footer">' + footer + '</div>'
+                + '</div>';
         });
-        $('#clientsList').html(html);
+        $('#clientsList').html('<div class="client-grid">' + cards + '</div>');
 
         if (pages <= 1) { $('#clientsPager').empty(); return; }
         let pHtml = '';
@@ -228,6 +329,40 @@ $(document).ready(function () {
 
     $('#searchClients').on('input', function () { renderClients(getFilteredClients(), 1); });
     $('#clientsPager').on('click', '[data-page]', function () { renderClients(getFilteredClients(), +$(this).data('page')); });
+
+    // Open the client profile — but let inner links / action buttons handle themselves.
+    $('#clientsList').on('click', '.client-card', function (e) {
+        if ($(e.target).closest('a, .client-card-actions').length) return;
+        window.location.href = 'klient.php?id=' + $(this).data('id');
+    });
+
+    // Edit / delete straight from a card.
+    $('#clientsList').on('click', '[data-edit]', function (e) {
+        e.stopPropagation();
+        const id = String($(this).data('edit'));
+        const client = allClients.find(function (c) { return String(c.id) === id; });
+        if (client) openEditClient(client);
+    });
+
+    $('#clientsList').on('click', '[data-delete]', function (e) {
+        e.stopPropagation();
+        deleteClient($(this).data('delete'));
+    });
+
+    function deleteClient(id) {
+        if (!confirm('Дали сте сигурни дека сакате да го избришете овој клиент?')) return;
+        $.ajax({
+            url: 'api/client_api.php',
+            type: 'POST',
+            data: { action: 'delete', id: id },
+            dataType: 'json',
+            success: function (res) {
+                if (res.success) { allClients = allClients.filter(function (c) { return String(c.id) !== String(id); }); renderClients(getFilteredClients(), 1); }
+                else alert(res.message);
+            },
+            error: function () { alert('Грешка при бришење.'); }
+        });
+    }
 
     // ---- Invoices ----
 
@@ -336,7 +471,58 @@ $(document).ready(function () {
         return parts[2] + ' ' + MK_MONTHS[parseInt(parts[1], 10) - 1];
     }
 
+    // ---- Dashboard ----
+
+    function loadDashboard() {
+        // Invoice stats + recent list are admin-only; the elements are only
+        // rendered for admins, so guard on their presence.
+        if ($('#statMonth').length) {
+            $.ajax({
+                url:      'api/invoice_api.php',
+                data:     { action: 'get_stats' },
+                dataType: 'json',
+                success: function (res) {
+                    if (!res.success) return;
+                    $('#statMonth').text(res.stats.this_month);
+                    $('#statSent').text(res.stats.sent);
+                    $('#statDraft').text(res.stats.draft);
+                    renderRecent(res.recent);
+                }
+            });
+        }
+
+        // Client count is available to every role.
+        $.ajax({
+            url:      'api/client_api.php',
+            data:     { action: 'get_all' },
+            dataType: 'json',
+            success: function (res) {
+                if (res.success) $('#statClients').text(res.data.length);
+            }
+        });
+    }
+
+    function renderRecent(invoices) {
+        if (!invoices || !invoices.length) {
+            $('#dashRecentList').html('<p class="list-msg" style="padding:0.75rem 0">Сè уште нема фактури.</p>');
+            return;
+        }
+        let html = '';
+        invoices.forEach(function (inv) {
+            html += '<div class="inv-row">'
+                + '<span class="inv-num">'    + escapeHtml(inv.number)      + '</span>'
+                + '<span class="inv-name">'   + escapeHtml(inv.client_name) + '</span>'
+                + '<span class="inv-date">'   + formatDate(inv.date)        + '</span>'
+                + '<span class="inv-status">' + statusTag(inv.status)       + '</span>'
+                + '</div>';
+        });
+        $('#dashRecentList').html(html);
+    }
+
     // Load on page ready — only on pages that have these sections
+    if ($('#dashboard').length) {
+        loadDashboard();
+    }
     if ($('#invoicesList').length) {
         loadInvoices(1);
         loadClientsFilter();
@@ -365,5 +551,54 @@ $(document).ready(function () {
         d.appendChild(document.createTextNode(text));
         return d.innerHTML;
     }
+
+    // Soft background / readable foreground pairs for initial avatars.
+    const AVATAR_PALETTE = [
+        { bg: '#eff6ff', fg: '#1d4ed8' }, // blue
+        { bg: '#fff7ed', fg: '#c2410c' }, // orange
+        { bg: '#f0fdf4', fg: '#15803d' }, // green
+        { bg: '#fdf4ff', fg: '#a21caf' }, // fuchsia
+        { bg: '#fef2f2', fg: '#b91c1c' }, // red
+        { bg: '#f0f9ff', fg: '#0369a1' }, // sky
+        { bg: '#fefce8', fg: '#a16207' }, // amber
+        { bg: '#f5f3ff', fg: '#6d28d9' }  // violet
+    ];
+
+    // Deterministic colour from a name, so a client always gets the same avatar.
+    function avatarColor(name) {
+        const s = (name || '').trim();
+        let hash = 0;
+        for (let i = 0; i < s.length; i++) hash = (hash + s.charCodeAt(i)) % AVATAR_PALETTE.length;
+        return AVATAR_PALETTE[hash] || AVATAR_PALETTE[0];
+    }
+
+    // Up to two uppercase initials from the first and last word of a name.
+    function initials(name) {
+        const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+        if (!parts.length) return '?';
+        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+
+    // ---- Live avatar in the client modal ----
+    // Remember each avatar's default icon so we can restore it when the name is cleared.
+    const avatarDefaults = {
+        '#avatarCompany':    $('#avatarCompany').html(),
+        '#avatarIndividual': $('#avatarIndividual').html()
+    };
+
+    function updateModalAvatar(inputEl, avatarSel) {
+        const name = $(inputEl).val().trim();
+        const $av  = $(avatarSel);
+        if (!name) { $av.html(avatarDefaults[avatarSel]); return; }
+        $av.text(initials(name));
+    }
+
+    function resetModalAvatar(avatarSel) {
+        $(avatarSel).html(avatarDefaults[avatarSel]);
+    }
+
+    $('#pravno_naziv').on('input', function () { updateModalAvatar(this, '#avatarCompany'); });
+    $('#fizicko_ime').on('input',  function () { updateModalAvatar(this, '#avatarIndividual'); });
 
 });

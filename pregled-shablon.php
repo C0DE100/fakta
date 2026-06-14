@@ -22,6 +22,10 @@ foreach ($docs as &$doc) {
     $doc['variables'] = json_decode($doc['variables'], true) ?: [];
 }
 unset($doc);
+
+// Return to the folder this template lives in (if any), so "Назад" lands where
+// the user was browsing rather than always at the root.
+$backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=' . (int) $template['folder_id']) : '');
 ?>
 <!DOCTYPE html>
 <html lang="mk">
@@ -48,7 +52,7 @@ unset($doc);
 
         <!-- Top bar -->
         <div class="pt-8 pb-6 flex items-start gap-4 flex-wrap">
-            <a href="tipski-dokumenti.php" class="btn-secondary" style="flex-shrink:0;margin-top:0.125rem">
+            <a href="<?= htmlspecialchars($backUrl) ?>" class="btn-secondary" style="flex-shrink:0;margin-top:0.125rem">
                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>
                 </svg>
@@ -183,7 +187,7 @@ unset($doc);
                 node.className = 'ql-variable';
                 node.setAttribute('data-var', value);
                 node.setAttribute('contenteditable', 'false');
-                node.textContent = '$' + value + '$';
+                node.textContent = value;
                 return node;
             }
             static value(node) { return node.getAttribute('data-var'); }
@@ -247,7 +251,13 @@ unset($doc);
                 html += '<div class="doc-card" data-doc-id="' + doc.id + '">' +
                     '<div class="doc-card-title-bar">' +
                         '<span class="doc-card-name" title="' + escapeHtml(doc.name) + '">' + escapeHtml(doc.name) + '</span>' +
-                        '<a href="kreraj-dokument.php?doc_id=' + doc.id + '&template_id=' + TEMPLATE.id + '" class="btn-secondary" style="font-size:0.75rem;padding:0.3rem 0.6rem;flex-shrink:0">Уреди</a>' +
+                        '<button class="btn-icon-color btn-download-doc" data-id="' + doc.id + '" title="Преземи PDF">' +
+                            '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+                                '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
+                                '<polyline points="7 10 12 15 17 10"/>' +
+                                '<line x1="12" x2="12" y1="15" y2="3"/>' +
+                            '</svg>' +
+                        '</button>' +
                         '<button class="btn-icon-danger btn-delete-doc" data-id="' + doc.id + '" title="Избриши документ">' +
                             '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
                                 '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>' +
@@ -258,14 +268,7 @@ unset($doc);
                         '<div class="doc-preview-inner" id="preview-' + doc.id + '"></div>' +
                     '</div>' +
                     '<div class="doc-card-footer">' +
-                        '<button class="btn-new-client btn-download-doc" data-id="' + doc.id + '" style="flex:1">' +
-                            '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
-                                '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
-                                '<polyline points="7 10 12 15 17 10"/>' +
-                                '<line x1="12" x2="12" y1="15" y2="3"/>' +
-                            '</svg>' +
-                            'Преземи PDF' +
-                        '</button>' +
+                        '<a href="kreraj-dokument.php?doc_id=' + doc.id + '&template_id=' + TEMPLATE.id + '" class="btn-new-client doc-card-open" style="flex:1;justify-content:center">Отвори</a>' +
                     '</div>' +
                 '</div>';
             });
@@ -313,7 +316,7 @@ unset($doc);
                     var varName = op.insert.variable;
                     var val = (values && values[varName] !== undefined && values[varName] !== '')
                               ? values[varName]
-                              : '$' + varName + '$';
+                              : '[' + varName + ']';
                     var newOp = { insert: val };
                     if (op.attributes) newOp.attributes = op.attributes;
                     newOps.push(newOp);
@@ -503,6 +506,16 @@ unset($doc);
         /* ─────────────────────────────────────────────
            Single doc download
         ───────────────────────────────────────────── */
+        // Clicking anywhere on a document card (except its buttons/links) opens it,
+        // exactly like the "Отвори" button.
+        document.getElementById('docCardsGrid').addEventListener('click', function (e) {
+            if (e.target.closest('button, a')) return; // let the real controls handle it
+            var card = e.target.closest('.doc-card');
+            if (!card) return;
+            var docId = card.getAttribute('data-doc-id');
+            if (docId) window.location.href = 'kreraj-dokument.php?doc_id=' + docId + '&template_id=' + TEMPLATE.id;
+        });
+
         document.getElementById('docCardsGrid').addEventListener('click', function (e) {
             var btn = e.target.closest('.btn-download-doc');
             if (!btn) return;

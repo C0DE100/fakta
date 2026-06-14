@@ -81,4 +81,51 @@ class Invoice
             'page'  => $page,
         ];
     }
+
+    /**
+     * Aggregate counts for the dashboard: total invoices, how many fall in the
+     * given month (YYYY-MM), and a breakdown by status.
+     */
+    public function getStats(int $companyId, string $month): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                COUNT(*) AS total,
+                COALESCE(SUM(DATE_FORMAT(date, '%Y-%m') = :month), 0) AS this_month,
+                COALESCE(SUM(status = 'испратена'), 0) AS sent,
+                COALESCE(SUM(status = 'нацрт'), 0)     AS draft,
+                COALESCE(SUM(status = 'платена'), 0)   AS paid
+             FROM invoices
+             WHERE company_id = :company_id"
+        );
+        $stmt->execute([':company_id' => $companyId, ':month' => $month]);
+        $row = $stmt->fetch();
+
+        return [
+            'total'      => (int) $row['total'],
+            'this_month' => (int) $row['this_month'],
+            'sent'       => (int) $row['sent'],
+            'draft'      => (int) $row['draft'],
+            'paid'       => (int) $row['paid'],
+        ];
+    }
+
+    /** The newest invoices (joined with client names) for the dashboard list. */
+    public function getRecent(int $companyId, int $limit): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT i.id, i.number, i.date, i.status,
+                    CASE WHEN c.type = 'company' THEN c.company_name ELSE c.full_name END AS client_name
+             FROM invoices i
+             LEFT JOIN clients c ON c.id = i.client_id
+             WHERE i.company_id = :company_id
+             ORDER BY i.date DESC, i.id DESC
+             LIMIT :limit"
+        );
+        $stmt->bindValue(':company_id', $companyId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit',      $limit,     PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
 }

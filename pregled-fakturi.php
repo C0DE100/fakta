@@ -29,7 +29,30 @@ require_role('admin'); // invoices are admin-only for now
             <p class="text-sm text-slate-400 mt-1">Целосен список и детали за сите фактури</p>
         </div>
 
-        <!-- Content will be built here step by step -->
+        <!-- Фактури -->
+        <div id="sectionInvoices" class="mb-6">
+            <div class="bg-white border border-slate-200 rounded-xl shadow-sm">
+                <!-- Filter bar -->
+                <div class="inv-filters">
+                    <input type="search" id="searchInvoices" class="field inv-filter-search" placeholder="Пребарај по број на фактура, клиент...">
+                    <input type="month" id="filterMonth" class="field inv-filter-month" lang="mk">
+                    <select id="filterClient" class="field inv-filter-client">
+                        <option value="">Сите клиенти</option>
+                    </select>
+                </div>
+                <!-- Table -->
+                <div class="inv-table">
+                    <div class="inv-header">
+                        <span class="inv-num">Број</span>
+                        <span class="inv-name">Клиент</span>
+                        <span class="inv-date">Датум</span>
+                        <span class="inv-status">Статус</span>
+                    </div>
+                    <div id="invoicesList"></div>
+                </div>
+                <div id="invoicesPager" class="flex flex-wrap gap-1.5 px-4 py-3"></div>
+            </div>
+        </div>
 
     </div>
     </div> <!-- /.main-content -->

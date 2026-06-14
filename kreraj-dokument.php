@@ -101,32 +101,32 @@ foreach ($templateVarMap as $name => $docNames) {
         <!-- Quill toolbar (sticky) -->
         <div class="doc-toolbar-sticky">
             <div id="quill-toolbar">
-                <span class="ql-formats">
-                    <select class="ql-header">
+                <span class="ql-formats" data-group="Стил">
+                    <select class="ql-header" title="Стил на текст и наслови">
                         <option value="1">Наслов 1</option>
                         <option value="2">Наслов 2</option>
                         <option value="3">Наслов 3</option>
-                        <option selected="">Нормален</option>
+                        <option selected="">Нормален текст</option>
                     </select>
                 </span>
-                <span class="ql-formats">
-                    <button class="ql-bold"></button>
-                    <button class="ql-italic"></button>
-                    <button class="ql-underline"></button>
-                    <button class="ql-strike"></button>
+                <span class="ql-formats" data-group="Букви">
+                    <button class="ql-bold" title="Здебелено (Ctrl+B)"></button>
+                    <button class="ql-italic" title="Закосено (Ctrl+I)"></button>
+                    <button class="ql-underline" title="Подвлечено (Ctrl+U)"></button>
+                    <button class="ql-strike" title="Прецртано"></button>
                 </span>
-                <span class="ql-formats">
-                    <select class="ql-color"></select>
-                    <select class="ql-background"></select>
+                <span class="ql-formats" data-group="Боја">
+                    <select class="ql-color" title="Боја на текст"></select>
+                    <select class="ql-background" title="Боја на маркер (позадина)"></select>
                 </span>
-                <span class="ql-formats">
-                    <button class="ql-list" value="ordered"></button>
-                    <button class="ql-list" value="bullet"></button>
-                    <button class="ql-indent" value="-1"></button>
-                    <button class="ql-indent" value="+1"></button>
+                <span class="ql-formats" data-group="Листи">
+                    <button class="ql-list" value="ordered" title="Нумерирана листа"></button>
+                    <button class="ql-list" value="bullet" title="Точкаста листа"></button>
+                    <button class="ql-indent" value="-1" title="Намали вовлекување"></button>
+                    <button class="ql-indent" value="+1" title="Зголеми вовлекување"></button>
                 </span>
-                <span class="ql-formats">
-                    <select class="ql-align"></select>
+                <span class="ql-formats" data-group="Порамнување">
+                    <select class="ql-align" title="Порамнување на текст"></select>
                 </span>
             </div>
 
@@ -139,7 +139,7 @@ foreach ($templateVarMap as $name => $docNames) {
                     </svg>
                     Подели
                 </button>
-                <button id="btnInsertVar" class="btn-secondary" title="Внеси променлива (или напиши $$ во текстот)">
+                <button id="btnInsertVar" class="btn-secondary" title="Внеси променлива (или напиши / во текстот)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M8 9h8M8 12h5M8 15h3"/><rect width="18" height="18" x="3" y="3" rx="2"/>
                     </svg>
@@ -244,7 +244,7 @@ foreach ($templateVarMap as $name => $docNames) {
                 node.className = 'ql-variable';
                 node.setAttribute('data-var', value);
                 node.setAttribute('contenteditable', 'false');
-                node.textContent = '$' + value + '$';
+                node.textContent = value;
                 return node;
             }
             static value(node) { return node.getAttribute('data-var'); }
@@ -456,19 +456,22 @@ foreach ($templateVarMap as $name => $docNames) {
                 if (source === 'silent') return;
 
                 if (source === 'user') {
-                    // $$ shortcut → open variable modal
+                    // "/" at the start of a word opens the variable picker (slash menu).
+                    // Guarded so dates (12/05), "и/или" and URLs (http://) never trigger it:
+                    // it only fires when the slash follows whitespace or starts the text.
                     var ops = delta.ops || [];
                     var lastOp = ops[ops.length - 1];
-                    if (lastOp && typeof lastOp.insert === 'string' && lastOp.insert === '$') {
+                    if (lastOp && lastOp.insert === '/') {
                         var pos = 0;
                         ops.forEach(function (op) {
                             if (typeof op.retain === 'number') pos += op.retain;
                             else if (typeof op.insert === 'string') pos += op.insert.length;
                             else if (op.insert) pos += 1;
                         });
-                        if (pos >= 2 && q.getText(pos - 2, 1) === '$') {
-                            q.deleteText(pos - 2, 2, 'silent');
-                            q.setSelection(pos - 2, 0, 'silent');
+                        var prevCh = pos >= 2 ? q.getText(pos - 2, 1) : '';
+                        if (pos === 1 || /\s/.test(prevCh)) {
+                            q.deleteText(pos - 1, 1, 'silent');
+                            q.setSelection(pos - 1, 0, 'silent');
                             activeQuill = q;
                             setTimeout(insertVariable, 0);
                             return; // variable insert will retrigger reflow
@@ -852,6 +855,23 @@ foreach ($templateVarMap as $name => $docNames) {
         ───────────────────────────────────────────── */
         var toolbarEl = document.getElementById('quill-toolbar');
 
+        // Quill replaces the <select>s with its own markup, so put the plain-language
+        // tooltips on the generated dropdown labels for non-technical users.
+        (function decorateToolbar() {
+            var titles = {
+                'ql-header':     'Стил на текст и наслови',
+                'ql-color':      'Боја на текст',
+                'ql-background': 'Боја на маркер (позадина)',
+                'ql-align':      'Порамнување на текст'
+            };
+            Object.keys(titles).forEach(function (cls) {
+                var picker = toolbarEl.querySelector('.ql-picker.' + cls);
+                if (!picker) return;
+                var label = picker.querySelector('.ql-picker-label');
+                if (label) label.setAttribute('title', titles[cls]);
+            });
+        })();
+
         toolbarEl.addEventListener('mousedown', function (e) {
             if (activeQuill === quillMain) return;
             if (!activeQuill) return;
@@ -985,6 +1005,12 @@ foreach ($templateVarMap as $name => $docNames) {
         function snapshotDraft() {
             if (_saving) return;
             if (editorIsEmpty()) { clearDraft(); return; }
+            // Only treat it as a draft if the user actually changed something since
+            // opening. Just viewing a document (no edits) must NOT create a draft pill.
+            if (_initialSig !== null && draftSignature() === _initialSig) {
+                if (!_loadedFromDraft) clearDraft();
+                return;
+            }
             var state = {
                 name:     document.getElementById('docTitleInput').value,
                 is_split: splitActive ? 1 : 0,
@@ -1035,6 +1061,21 @@ foreach ($templateVarMap as $name => $docNames) {
         // flush the latest state when leaving so nothing typed is lost.
         document.addEventListener('input', scheduleSnapshot);
         window.addEventListener('beforeunload', snapshotDraft);
+
+        // Signature of the state the document opened with. snapshotDraft() compares
+        // against this so merely opening/viewing a document never creates a draft —
+        // only a real change does. If we resumed an existing draft, keep it as-is
+        // when nothing changed. Captured after the initial reflow settles.
+        var _loadedFromDraft = !!(_docDraft && _docDraft.pages && _docDraft.pages.length);
+        var _initialSig = null;
+        function draftSignature() {
+            return JSON.stringify({
+                name:     document.getElementById('docTitleInput').value,
+                is_split: splitActive ? 1 : 0,
+                pages:    collectPages()
+            });
+        }
+        setTimeout(function () { _initialSig = draftSignature(); }, 50);
 
         /* ─────────────────────────────────────────────
            Save document

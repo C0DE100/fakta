@@ -94,7 +94,7 @@
             if (op.insert && typeof op.insert === 'object' && op.insert.variable) {
                 var name = op.insert.variable;
                 var val = (values && values[name] !== undefined && values[name] !== '')
-                    ? values[name] : '$' + name + '$';
+                    ? values[name] : '[' + name + ']';
                 var nop = { insert: val };
                 if (op.attributes) nop.attributes = op.attributes;
                 ops.push(nop);
@@ -117,7 +117,7 @@
                 node.className = 'ql-variable';
                 node.setAttribute('data-var', value);
                 node.setAttribute('contenteditable', 'false');
-                node.textContent = '$' + value + '$';
+                node.textContent = value;
                 return node;
             }
             static value(node) { return node.getAttribute('data-var'); }
@@ -233,14 +233,14 @@
             var name = el.getAttribute('data-var');
             var v = state.values[name];
             if (v !== undefined && v !== '') { el.textContent = v; el.classList.remove('ql-variable--empty'); }
-            else { el.textContent = '$' + name + '$'; el.classList.add('ql-variable--empty'); }
+            else { el.textContent = name; el.classList.add('ql-variable--empty'); }
         });
     }
     function applyValueToChips(name) {
         var hasVal = state.values[name] !== undefined && state.values[name] !== '';
         var sel = '#wsPreview .ql-variable[data-var="' + cssEsc(name) + '"]';
         document.querySelectorAll(sel).forEach(function (el) {
-            el.textContent = hasVal ? state.values[name] : '$' + name + '$';
+            el.textContent = hasVal ? state.values[name] : name;
             el.classList.toggle('ql-variable--empty', !hasVal);
         });
     }
