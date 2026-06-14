@@ -1,8 +1,12 @@
 <?php
-$navUser    = function_exists('current_user') ? current_user() : null;
-$navCompany = $navUser['company_name'] ?? '';
-$navName    = $navUser['name'] ?? '';
-$logoutUrl  = function_exists('fakta_url') ? fakta_url('logout.php') : 'logout.php';
+$navUser     = function_exists('current_user') ? current_user() : null;
+$navCompany  = $navUser['company_name'] ?? '';
+$navName     = $navUser['name'] ?? '';
+$navEmail    = $navUser['email'] ?? '';
+$navInitials = function_exists('fakta_initials') ? fakta_initials($navName) : '?';
+$navColor    = function_exists('fakta_avatar_color') ? fakta_avatar_color($navName) : ['bg' => '#e7e5e4', 'fg' => '#57534e'];
+$logoutUrl   = function_exists('fakta_url') ? fakta_url('logout.php') : 'logout.php';
+$settingsUrl = function_exists('fakta_url') ? fakta_url('podesuvanja.php') : 'podesuvanja.php';
 ?>
 <nav class="bg-white site-nav">
     <div class="nav-inner max-w-7xl mx-auto px-7 py-5 flex items-center justify-between">
@@ -20,16 +24,72 @@ $logoutUrl  = function_exists('fakta_url') ? fakta_url('logout.php') : 'logout.p
                 <?php if ($navName !== ''): ?><div class="text-xs text-slate-400"><?= htmlspecialchars($navName) ?></div><?php endif; ?>
             </div>
             <?php endif; ?>
-            <a href="<?= htmlspecialchars($logoutUrl) ?>" class="nav-logout inline-flex items-center gap-2 text-sm font-medium py-2.5 px-4 rounded-lg cursor-pointer select-none no-underline transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>
-                </svg>
-                Одјава
-            </a>
+
+            <div class="nav-user" id="navUser">
+                <button type="button" class="nav-avatar" id="navAvatarBtn" aria-haspopup="true" aria-expanded="false" aria-label="Кориснички мени"
+                        style="background:<?= htmlspecialchars($navColor['bg']) ?>;color:<?= htmlspecialchars($navColor['fg']) ?>;">
+                    <?= htmlspecialchars($navInitials) ?>
+                </button>
+
+                <div class="nav-menu" id="navMenu" role="menu" aria-hidden="true">
+                    <div class="nav-menu-head">
+                        <div class="nav-avatar nav-avatar--sm" style="background:<?= htmlspecialchars($navColor['bg']) ?>;color:<?= htmlspecialchars($navColor['fg']) ?>;">
+                            <?= htmlspecialchars($navInitials) ?>
+                        </div>
+                        <div class="nav-menu-head-text">
+                            <?php if ($navName !== ''): ?><div class="nav-menu-name"><?= htmlspecialchars($navName) ?></div><?php endif; ?>
+                            <?php if ($navEmail !== ''): ?><div class="nav-menu-email"><?= htmlspecialchars($navEmail) ?></div><?php endif; ?>
+                        </div>
+                    </div>
+
+                    <a href="<?= htmlspecialchars($settingsUrl) ?>" class="nav-menu-item" role="menuitem">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+                        </svg>
+                        Поставки
+                    </a>
+
+                    <div class="nav-menu-sep"></div>
+
+                    <a href="<?= htmlspecialchars($logoutUrl) ?>" class="nav-menu-item nav-menu-item--danger" role="menuitem">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>
+                        </svg>
+                        Одјава
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 </nav>
-<script>window.FAKTA_CO = <?= json_encode((string)(function_exists('current_company_id') ? (current_company_id() ?? '') : '')) ?>;</script>
+<script>
+(function () {
+    var wrap = document.getElementById('navUser');
+    if (!wrap) return;
+    var btn  = document.getElementById('navAvatarBtn');
+    var menu = document.getElementById('navMenu');
+
+    function close() {
+        wrap.classList.remove('open');
+        btn.setAttribute('aria-expanded', 'false');
+        menu.setAttribute('aria-hidden', 'true');
+    }
+    function toggle() {
+        var open = wrap.classList.toggle('open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        menu.setAttribute('aria-hidden', open ? 'false' : 'true');
+    }
+
+    btn.addEventListener('click', function (e) { e.stopPropagation(); toggle(); });
+    document.addEventListener('click', function (e) { if (!wrap.contains(e.target)) close(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+}());
+</script>
+<script>
+window.FAKTA_CO   = <?= json_encode((string)(function_exists('current_company_id') ? (current_company_id() ?? '') : '')) ?>;
+window.FAKTA_ROLE = <?= json_encode((string)(function_exists('current_role') ? (current_role() ?? '') : '')) ?>;
+window.FAKTA_UID  = <?= json_encode((int)($navUser['id'] ?? 0)) ?>;
+</script>
 <!-- Global drafts (docked on every page): use-template workspace + in-progress document -->
 <script src="js/draft-workspace.js" defer></script>
 <script src="js/draft-document.js" defer></script>

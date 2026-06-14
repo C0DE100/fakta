@@ -14,6 +14,10 @@ $stmt->execute([$templateId, $companyId]);
 $template = $stmt->fetch();
 if (!$template) { header('Location: tipski-dokumenti.php'); exit; }
 
+// Praktikant may only edit templates (and their documents) they created.
+$canManageTemplate = current_role() !== 'praktikant'
+    || (int) ($template['created_by'] ?? 0) === (int) (current_user()['id'] ?? -1);
+
 $stmt = $pdo->prepare('SELECT * FROM documents WHERE template_id = ? AND company_id = ? ORDER BY sort_order ASC, id ASC');
 $stmt->execute([$templateId, $companyId]);
 $docs = $stmt->fetchAll();
@@ -61,15 +65,18 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
             <div style="flex:1;min-width:0">
                 <div style="display:flex;align-items:center;gap:0.5rem;min-width:0">
                     <h1 id="tplNameHeading" class="text-lg font-semibold text-slate-800" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= htmlspecialchars($template['name']) ?></h1>
+                    <?php if ($canManageTemplate): ?>
                     <button id="btnEditTemplate" class="btn-icon-edit" title="Уреди назив и опис">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>
                         </svg>
                     </button>
+                    <?php endif; ?>
                 </div>
                 <p id="tplDescDisplay" class="tpl-view-desc"<?= ($template['description'] ?? '') !== '' ? '' : ' style="display:none"' ?>><?= htmlspecialchars($template['description'] ?? '') ?></p>
             </div>
             <div style="display:flex;gap:0.5rem;flex-shrink:0;margin-top:0.125rem">
+                <!-- Adding documents is allowed for everyone, including praktikant. -->
                 <a href="kreraj-dokument.php?template_id=<?= $templateId ?>" class="btn-new-client">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M5 12h14"/><path d="M12 5v14"/>
@@ -172,6 +179,13 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
     <script>
     var TEMPLATE = <?= json_encode($template) ?>;
     var DOCS     = <?= json_encode($docs) ?>;
+    var CAN_MANAGE = <?= $canManageTemplate ? 'true' : 'false' ?>;
+
+    // Praktikant may edit/delete only documents they created themselves.
+    var IS_PRAKTIKANT = (window.FAKTA_ROLE === 'praktikant');
+    function canManageDoc(doc) {
+        return !IS_PRAKTIKANT || (doc && doc.created_by && parseInt(doc.created_by, 10) === window.FAKTA_UID);
+    }
     </script>
 
     <script>
@@ -258,17 +272,20 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
                                 '<line x1="12" x2="12" y1="15" y2="3"/>' +
                             '</svg>' +
                         '</button>' +
+                        (canManageDoc(doc) ?
                         '<button class="btn-icon-danger btn-delete-doc" data-id="' + doc.id + '" title="Избриши документ">' +
                             '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
                                 '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>' +
                             '</svg>' +
-                        '</button>' +
+                        '</button>' : '') +
                     '</div>' +
                     '<div class="doc-preview-area">' +
                         '<div class="doc-preview-inner" id="preview-' + doc.id + '"></div>' +
                     '</div>' +
                     '<div class="doc-card-footer">' +
-                        '<a href="kreraj-dokument.php?doc_id=' + doc.id + '&template_id=' + TEMPLATE.id + '" class="btn-new-client doc-card-open" style="flex:1;justify-content:center">Отвори</a>' +
+                        (canManageDoc(doc)
+                            ? '<a href="kreraj-dokument.php?doc_id=' + doc.id + '&template_id=' + TEMPLATE.id + '" class="btn-new-client doc-card-open" style="flex:1;justify-content:center">Отвори</a>'
+                            : '<span class="doc-card-readonly" style="flex:1;text-align:center">Само за преглед</span>') +
                     '</div>' +
                 '</div>';
             });
@@ -639,7 +656,8 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
             document.body.classList.remove('modal-open');
         }
 
-        document.getElementById('btnEditTemplate').addEventListener('click', openEditModal);
+        var btnEditTpl = document.getElementById('btnEditTemplate');
+        if (btnEditTpl) btnEditTpl.addEventListener('click', openEditModal);
         document.getElementById('tplEditClose').addEventListener('click', closeEditModal);
         document.getElementById('tplEditCancel').addEventListener('click', closeEditModal);
         document.getElementById('tplEditModal').addEventListener('click', function (e) {

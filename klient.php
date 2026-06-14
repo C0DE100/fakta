@@ -12,6 +12,7 @@ require_once __DIR__ . '/classes/Encryption.php';
 require_once __DIR__ . '/classes/Client.php';
 
 $companyId = current_company_id();
+$canEditClient = current_role() !== 'praktikant'; // praktikant: view only, no edit/delete
 $clientId  = (int) ($_GET['id'] ?? 0);
 
 $clientObj = new Client($GLOBALS['fakta_db'], new Encryption(ENCRYPTION_KEY));
@@ -99,6 +100,7 @@ if ($client) {
                     </span>
                 </div>
                 <div class="profile-head-actions">
+                    <?php if ($canEditClient): ?>
                     <button type="button" id="btnEdit" class="btn-secondary" data-view-action>
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>
@@ -113,6 +115,7 @@ if ($client) {
                     </button>
                     <button type="button" id="btnCancel" class="btn-modal-cancel" data-edit-action>Откажи</button>
                     <button type="submit" form="profileForm" id="btnSave" class="btn-modal-save" data-edit-action>Зачувај</button>
+                    <?php endif; ?>
                 </div>
             </div>
 

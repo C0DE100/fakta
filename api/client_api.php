@@ -16,6 +16,13 @@ $companyId = current_company_id();
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
+// Praktikant may create and view clients, but not modify or delete them.
+if (current_role() === 'praktikant' && in_array($action, ['update_company', 'update_individual', 'delete'], true)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Немате дозвола за оваа акција.']);
+    exit;
+}
+
 try {
     switch ($action) {
 

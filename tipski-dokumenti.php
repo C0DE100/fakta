@@ -223,6 +223,17 @@ $currentPage = 'tipski-dokumenti';
         var currentFolderId = null;          // null = root
         var selectedCreateColor = '';
 
+        // Permissions: praktikant may only edit/delete templates they created,
+        // and may never move templates. Everyone else may manage all.
+        var IS_PRAKTIKANT = (window.FAKTA_ROLE === 'praktikant');
+        function canManageTpl(tpl) {
+            return !IS_PRAKTIKANT || (!!tpl && tpl.created_by && tpl.created_by === window.FAKTA_UID);
+        }
+        function canMoveTpl() { return !IS_PRAKTIKANT; }
+        function canManageFolder(f) {
+            return !IS_PRAKTIKANT || (!!f && f.created_by && f.created_by === window.FAKTA_UID);
+        }
+
         var FOLDER_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>';
 
         var TPL_COLORS = [
@@ -311,6 +322,10 @@ $currentPage = 'tipski-dokumenti';
                 var count = templatesForView().length;
                 $id('folderTitleName').textContent = f ? f.name : '';
                 $id('folderTitleCount').textContent = count + ' ' + (count === 1 ? 'шаблон' : 'шаблони');
+                // Praktikant: only show rename/delete for folders they created.
+                var canF = canManageFolder(f);
+                $id('btnFolderRename').style.display = canF ? '' : 'none';
+                $id('btnFolderDelete').style.display = canF ? '' : 'none';
             }
 
             renderFolders(searching, inFolder);
@@ -381,8 +396,23 @@ $currentPage = 'tipski-dokumenti';
                     : '';
 
                 var colorAttr = tpl.color ? ' data-color="' + escapeHtml(tpl.color) + '"' : '';
+                var manage = canManageTpl(tpl);
 
-                html += '<div class="tpl-card" draggable="true"' + colorAttr + ' data-id="' + tpl.id + '">' +
+                // Color + delete only for templates the user may manage.
+                var manageHtml = manage
+                    ? '<button class="btn-icon-color btn-color-tpl" data-id="' + tpl.id + '" title="Боја на картичка">' +
+                          '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                              '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>' +
+                          '</svg>' +
+                      '</button>' +
+                      '<button class="btn-icon-danger btn-delete-tpl" data-id="' + tpl.id + '" data-name="' + escapeHtml(tpl.name) + '" title="Избриши шаблон">' +
+                          '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                              '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>' +
+                          '</svg>' +
+                      '</button>'
+                    : '';
+
+                html += '<div class="tpl-card" draggable="' + (canMoveTpl() ? 'true' : 'false') + '"' + colorAttr + ' data-id="' + tpl.id + '">' +
                     '<div class="tpl-thumb">' +
                         '<div class="tpl-sheet">' +
                             '<span class="tpl-thumb-bar"></span>' +
@@ -404,16 +434,7 @@ $currentPage = 'tipski-dokumenti';
                         '<div class="tpl-card-actions">' +
                             useHtml +
                             '<a href="pregled-shablon.php?id=' + tpl.id + '" class="btn-secondary tpl-card-open">Отвори &rarr;</a>' +
-                            '<button class="btn-icon-color btn-color-tpl" data-id="' + tpl.id + '" title="Боја на картичка">' +
-                                '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-                                    '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>' +
-                                '</svg>' +
-                            '</button>' +
-                            '<button class="btn-icon-danger btn-delete-tpl" data-id="' + tpl.id + '" data-name="' + escapeHtml(tpl.name) + '" title="Избриши шаблон">' +
-                                '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-                                    '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>' +
-                                '</svg>' +
-                            '</button>' +
+                            manageHtml +
                         '</div>' +
                     '</div>' +
                 '</div>';
@@ -869,18 +890,24 @@ $currentPage = 'tipski-dokumenti';
 
         // ── Right-click context menu (rename / move) ────────────────────────
         function openContextMenu(x, y, id) {
+            var tpl = findTemplate(id);
+            var canRename = canManageTpl(tpl); // rename = edit
+            var canMove   = canMoveTpl();
+            if (!canRename && !canMove) return; // nothing the user may do
             closePopover();
             popover = document.createElement('div');
             popover.className = 'ctx-menu';
             popover.innerHTML =
+                (canRename ?
                 '<button type="button" class="ctx-item" data-act="rename">' +
                     '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' +
                     'Преименувај шаблон' +
-                '</button>' +
+                '</button>' : '') +
+                (canMove ?
                 '<button type="button" class="ctx-item" data-act="move">' +
                     '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>' +
                     'Премести во папка' +
-                '</button>';
+                '</button>' : '');
             document.body.appendChild(popover);
             positionPopoverXY(x, y);
             popover.addEventListener('click', function (e) {

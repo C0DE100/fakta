@@ -15,7 +15,7 @@ class User
      * Create a company user. Throws if the email already exists.
      * $role must be 'admin' or 'employee' (super-admins are seeded, not created here).
      */
-    public function create(int $companyId, string $name, string $email, string $password, string $role): int
+    public function create(int $companyId, string $name, string $email, string $password, string $role, ?string $phone = null): int
     {
         if (!in_array($role, ['admin', 'employee', 'praktikant'], true)) {
             throw new InvalidArgumentException('Невалидна улога.');
@@ -24,18 +24,31 @@ class User
             throw new RuntimeException('Корисник со таа е-пошта веќе постои.');
         }
 
-        $sql = "INSERT INTO users (company_id, name, email, password_hash, role, created_at)
-                VALUES (:company_id, :name, :email, :hash, :role, NOW())";
+        $sql = "INSERT INTO users (company_id, name, email, phone, password_hash, role, created_at)
+                VALUES (:company_id, :name, :email, :phone, :hash, :role, NOW())";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
             ':company_id' => $companyId,
             ':name'       => $name,
             ':email'      => $email,
+            ':phone'      => ($phone !== null && $phone !== '') ? $phone : null,
             ':hash'       => password_hash($password, PASSWORD_DEFAULT),
             ':role'       => $role,
         ]);
 
         return (int) $this->db->lastInsertId();
+    }
+
+    /** Change a user's role, scoped to a company. Throws on an invalid role. */
+    public function updateRole(int $id, int $companyId, string $role): void
+    {
+        if (!in_array($role, ['admin', 'employee', 'praktikant'], true)) {
+            throw new InvalidArgumentException('Невалидна улога.');
+        }
+        $stmt = $this->db->prepare(
+            "UPDATE users SET role = :role WHERE id = :id AND company_id = :cid AND role <> 'super_admin'"
+        );
+        $stmt->execute([':role' => $role, ':id' => $id, ':cid' => $companyId]);
     }
 
     public function getByEmail(string $email): ?array
@@ -57,6 +70,43 @@ class User
         $stmt->execute([':id' => $id]);
         $user = $stmt->fetch();
         return $user ?: null;
+    }
+
+    /** Update a user's display name, email and phone. Throws if the email belongs to someone else. */
+    public function updateProfile(int $id, string $name, string $email, ?string $phone = null): void
+    {
+        $existing = $this->getByEmail($email);
+        if ($existing && (int) $existing['id'] !== $id) {
+            throw new RuntimeException('Корисник со таа е-пошта веќе постои.');
+        }
+        $stmt = $this->db->prepare(
+            "UPDATE users SET name = :name, email = :email, phone = :phone WHERE id = :id"
+        );
+        $stmt->execute([
+            ':name'  => $name,
+            ':email' => $email,
+            ':phone' => ($phone !== null && $phone !== '') ? $phone : null,
+            ':id'    => $id,
+        ]);
+    }
+
+    /**
+     * Change a user's password after verifying the current one.
+     * Throws if the current password is wrong.
+     */
+    public function changePassword(int $id, string $currentPassword, string $newPassword): void
+    {
+        $user = $this->getById($id);
+        if (!$user || !password_verify($currentPassword, $user['password_hash'])) {
+            throw new RuntimeException('Тековната лозинка е погрешна.');
+        }
+        $stmt = $this->db->prepare(
+            "UPDATE users SET password_hash = :hash WHERE id = :id"
+        );
+        $stmt->execute([
+            ':hash' => password_hash($newPassword, PASSWORD_DEFAULT),
+            ':id'   => $id,
+        ]);
     }
 
     /** Searchable, paginated users of a single company. Returns ['data','total','pages','page']. */

@@ -295,17 +295,20 @@ $(document).ready(function () {
             let footer;
             if (c.created_by_name) {
                 const cc = avatarColor(c.created_by_name);
-                footer = '<div class="client-creator-avatar" style="background:' + cc.bg + ';color:' + cc.fg + '">' + initials(c.created_by_name) + '</div>'
-                       + '<span>Креирано од <strong>' + escapeHtml(c.created_by_name) + '</strong></span>';
+                footer = '<div class="client-creator-avatar" style="background:' + cc.bg + ';color:' + cc.fg + '" title="Креирано од ' + escapeHtml(c.created_by_name) + '">' + initials(c.created_by_name) + '</div>';
             } else {
-                footer = '<div class="client-creator-avatar client-creator-avatar--unknown">?</div><span>Креатор непознат</span>';
+                footer = '<div class="client-creator-avatar client-creator-avatar--unknown" title="Креатор непознат">?</div>';
             }
 
-            cards += '<div class="client-card" data-id="' + c.id + '">'
-                +   '<div class="client-card-actions">'
+            // Praktikant may view/create clients but not edit or delete them.
+            var actionsHtml = (window.FAKTA_ROLE === 'praktikant') ? '' :
+                    '<div class="client-card-actions">'
                 +     '<button type="button" class="card-action" data-edit="' + c.id + '" title="Уреди" aria-label="Уреди">' + svgIcon('card-action-icon', ICON_EDIT) + '</button>'
                 +     '<button type="button" class="card-action card-action--danger" data-delete="' + c.id + '" title="Избриши" aria-label="Избриши">' + svgIcon('card-action-icon', ICON_TRASH) + '</button>'
-                +   '</div>'
+                +   '</div>';
+
+            cards += '<div class="client-card" data-id="' + c.id + '">'
+                +   actionsHtml
                 +   '<div class="client-card-top">'
                 +     '<div class="client-avatar">' + initials(name) + '</div>'
                 +     '<div class="client-card-id">'

@@ -33,6 +33,14 @@ if (!$ownStmt->fetchColumn()) {
     exit;
 }
 
+// Praktikant may edit only documents they created (they may still create new
+// ones). Block opening the editor on someone else's document up front.
+if ($editDoc && current_role() === 'praktikant'
+    && (int) ($editDoc['created_by'] ?? 0) !== (int) (current_user()['id'] ?? -1)) {
+    header('Location: ' . fakta_url('pregled-shablon.php?id=' . $templateId));
+    exit;
+}
+
 // Variables already used by the other documents in this template. The editor
 // offers these as one-click suggestions so variable names stay consistent
 // across every document in the template.

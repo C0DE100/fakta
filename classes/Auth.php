@@ -54,6 +54,7 @@ class Auth
             'company_name' => $user['company_name'] ?? null,
             'name'         => $user['name'],
             'email'        => $user['email'],
+            'phone'        => $user['phone'] ?? null,
             'role'         => $user['role'],
         ];
 
