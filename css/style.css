@@ -1679,6 +1679,23 @@ body.modal-open {
     padding: 0.5rem 0.9rem;
     line-height: 1.1;
 }
+
+/* Save button → flips to green with a check mark after a successful save,
+   then animates back to normal. */
+#btnSave {
+    transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+}
+#btnSave.btn-saved {
+    background: #16a34a !important;
+    border-color: #16a34a !important;
+    color: #ffffff !important;
+}
+#btnSave.btn-saved svg { animation: btnCheckPop 0.3s ease; }
+@keyframes btnCheckPop {
+    0%   { transform: scale(0.4); opacity: 0; }
+    60%  { transform: scale(1.15); }
+    100% { transform: scale(1); opacity: 1; }
+}
 .doc-toolbar-sticky .ql-toolbar.ql-snow .ql-formats {
     margin-right: 0.625rem;
 }
@@ -1919,6 +1936,294 @@ body.modal-open {
 
 /* Quill link tooltip */
 .ql-snow .ql-tooltip { z-index: 100; }
+
+/* ================================================
+   CONTINUOUS EDITOR SHEET (new pagination-free editing surface)
+   ------------------------------------------------------------
+   One growing A4-width sheet holding a single continuous Quill
+   (or two for split mode). Page boundaries are shown only as a
+   faint guide; the real A4 splitting happens once at save time.
+   ================================================ */
+.doc-sheet {
+    background: #ffffff;
+    width: 21cm;
+    min-height: 29.7cm;
+    box-shadow: 0 2px 12px rgba(28, 25, 23, 0.12), 0 8px 32px rgba(28, 25, 23, 0.08);
+    border-radius: 2px;
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Body holds the continuous editor(s); it just grows — the browser handles
+   page breaks at print time, so there are no on-screen page-guide lines. */
+.doc-sheet-body {
+    flex: 1;
+    padding: 0 3cm;
+    position: relative;
+    min-height: 20cm;
+}
+[data-theme="dark"] .doc-sheet { background: #1c1c1f; }
+
+/* Continuous single / split editors grow without clipping */
+.doc-sheet-body .doc-editor-single { display: block; }
+.doc-sheet-body .doc-editor-split  { display: none; }
+.doc-sheet.split-mode .doc-editor-single { display: none; }
+.doc-sheet.split-mode .doc-editor-split  {
+    display: flex;
+    align-items: stretch;
+}
+
+/* In the live editor, split columns show only a clean vertical divider. The
+   boxed table-cell borders are kept for print/preview, where they don't clash
+   with the horizontal page-guide lines. */
+.doc-sheet-body .doc-col { border: none; padding: 0 1.5rem; }
+.doc-sheet-body .doc-col:first-child {
+    border-right: 1px solid #d6d0ca;
+    padding-left: 0;
+}
+.doc-sheet-body .doc-col:last-child { padding-right: 0; }
+[data-theme="dark"] .doc-sheet-body .doc-col:first-child { border-right-color: #3c3c44; }
+
+.doc-sheet-body .ql-container.ql-snow {
+    border: none;
+    font-family: 'Times New Roman', Times, Georgia, serif;
+    font-size: 12pt;
+    color: #1c1917;
+    background: transparent;
+}
+.doc-sheet-body .doc-editor-single .ql-editor {
+    padding: 0;
+    min-height: 20cm;
+    max-height: none;
+    overflow: visible;
+    font-size: 12pt;
+    line-height: 1.65;
+    color: #1c1917;
+}
+.doc-sheet-body .doc-editor-split .ql-editor {
+    padding: 0;
+    min-height: 20cm;
+    max-height: none;
+    overflow: visible;
+    font-size: 12pt;
+    line-height: 1.65;
+    color: #1c1917;
+}
+.doc-sheet-body .ql-editor.ql-blank::before {
+    font-style: normal;
+    color: #c4bbae;
+    font-size: 12pt;
+    left: 0;
+    right: 0;
+}
+[data-theme="dark"] .doc-sheet-body .ql-container.ql-snow { color: #ededf0; }
+[data-theme="dark"] .doc-sheet-body .ql-editor { color: #ededf0; }
+[data-theme="dark"] .doc-sheet-body .ql-editor.ql-blank::before { color: #57534e; }
+
+/* Manual page break — a labelled divider the user inserts (Ctrl+Enter feel).
+   JS stretches its height to fill the rest of the current page, so whatever
+   follows visibly starts at the top of the next page. The faint band makes the
+   "rest of this page is empty" space read clearly. */
+.ql-pagebreak {
+    position: relative;
+    box-sizing: border-box;
+    min-height: 1.2rem;
+    margin: 0.9rem 0 0;
+    border-top: 2px dashed #bdb6ad;
+    text-align: center;
+    user-select: none;
+    background: repeating-linear-gradient(
+        -45deg,
+        rgba(120, 113, 108, 0.05) 0,
+        rgba(120, 113, 108, 0.05) 8px,
+        transparent 8px,
+        transparent 16px
+    );
+}
+.ql-pagebreak .ql-pagebreak-label {
+    position: absolute;
+    top: -0.72rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #fff;
+    padding: 0 0.6rem;
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #a8a29e;
+}
+[data-theme="dark"] .ql-pagebreak { border-top-color: #45454d; }
+[data-theme="dark"] .ql-pagebreak .ql-pagebreak-label { background: #1c1c1f; color: #6b6b75; }
+
+/* Live "≈ N pages" indicator under the sheet */
+.doc-page-counter {
+    margin-top: 1.25rem;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: #a8a29e;
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+[data-theme="dark"] .doc-page-counter { color: #6b6b75; }
+
+/* Offscreen page used only to measure save-time pagination */
+.doc-measure-host {
+    position: absolute;
+    left: -10000px;
+    top: 0;
+    width: 21cm;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* ================================================
+   DOCUMENT PREVIEW MODAL — zoomed-out paper view
+   ================================================ */
+.preview-box {
+    background: #e8e4de;
+    border-radius: 0.9rem;
+    width: 100%;
+    max-width: 1100px;
+    height: 92vh;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(28, 25, 23, 0.18), 0 32px 80px rgba(28, 25, 23, 0.16);
+    animation: modalIn 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+    border: 1px solid #d8d2c8;
+}
+.preview-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 1rem;
+    background: #ffffff;
+    border-bottom: 1px solid #e8e3dc;
+    flex-shrink: 0;
+}
+.preview-title { font-size: 0.95rem; font-weight: 600; color: #1c1917; }
+.preview-head-actions { display: flex; align-items: center; gap: 0.5rem; }
+.preview-zoom {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    background: #f4f2ef;
+    border: 1px solid #e8e3dc;
+    border-radius: 0.5rem;
+    padding: 0.1rem;
+}
+.preview-zoom-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border: none;
+    background: none;
+    color: #78716c;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: color 0.15s, background-color 0.15s;
+}
+.preview-zoom-btn:hover { color: #1c1917; background: #ffffff; }
+.preview-zoom-val {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #57534e;
+    min-width: 3.2ch;
+    text-align: center;
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+.preview-scroll {
+    flex: 1;
+    overflow: auto;
+    padding: 2rem 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.preview-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+}
+/* Preview is read-only and flows like print (no fixed-height clipping) */
+.preview-stage .doc-print-sheet,
+.preview-stage .ql-editor { cursor: default; }
+.preview-stage .ql-editor { overflow: visible; }
+
+/* On-screen A4-width paper sheet wrapping the flowing preview content */
+.doc-print-sheet {
+    background: #ffffff;
+    width: 21cm;
+    box-sizing: border-box;
+    padding: 2.5cm 3cm;
+    box-shadow: 0 2px 12px rgba(28, 25, 23, 0.12), 0 8px 32px rgba(28, 25, 23, 0.08);
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+/* Flowing content table (shared by preview + print). <tbody> flows across A4
+   pages; <thead>/<tfoot> hold the document header/footer (repeat per page in
+   print). */
+.doc-print-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+.doc-print-table .doc-print-cell { vertical-align: top; }
+.doc-print-table .doc-print-col {
+    width: 50%;
+    vertical-align: top;
+    padding: 0 0.6cm;
+}
+.doc-print-table .doc-print-col:first-child {
+    border-right: 1px solid #c0b9b0;
+    padding-left: 0;
+}
+.doc-print-table .doc-print-col:last-child { padding-right: 0; }
+
+/* Header/footer inside the table — centred, with a little gap from the body.
+   The print table always renders on a white sheet, so keep its text black even
+   when the app is in dark mode. */
+.doc-print-table thead .page-header-editor { padding-bottom: 0.4cm; }
+.doc-print-table tfoot .page-footer-editor { padding-top: 0.4cm; }
+.doc-print-sheet .page-header-editor,
+.doc-print-sheet .page-footer-editor,
+[data-theme="dark"] .doc-print-sheet .page-header-editor,
+[data-theme="dark"] .doc-print-sheet .page-footer-editor { color: #1c1917; }
+
+/* Read-only Quill inside a flowing block: grow with content, no clip */
+.doc-print-sheet .ql-container.ql-snow { border: none; }
+.doc-print-sheet .ql-container,
+.doc-print-sheet .ql-editor {
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+}
+.doc-print-sheet .ql-editor {
+    padding: 0;
+    font-family: 'Times New Roman', Times, Georgia, serif;
+    font-size: 12pt;
+    line-height: 1.65;
+    color: #1c1917;
+}
+
+[data-theme="dark"] .preview-box { background: #161618; border-color: #2b2b31; }
+[data-theme="dark"] .preview-head { background: #212125; border-bottom-color: #3c3c44; }
+[data-theme="dark"] .preview-title { color: #ededf0; }
+[data-theme="dark"] .preview-zoom { background: #2b2b31; border-color: #3c3c44; }
+[data-theme="dark"] .preview-zoom-btn { color: #9898a6; }
+[data-theme="dark"] .preview-zoom-btn:hover { color: #ededf0; background: #1c1c1f; }
+[data-theme="dark"] .preview-zoom-val { color: #c7c7d1; }
 
 /* ================================================
    DOCUMENT EDITOR — dark mode
@@ -2781,16 +3086,60 @@ body.tpl-dragging .folder-card { border-style: dashed; }
     body.printing-doc #printZone {
         display: block !important;
         position: static;
+        background: #fff !important;
     }
-    #printZone .doc-page-wrap {
-        padding: 0 !important;
-        gap: 0 !important;
-        background: white !important;
+
+    /* Flowing print content — the browser paginates it across A4 pages. */
+    #printZone .doc-print-table { width: 100% !important; background: #fff !important; }
+
+    /* The body row breaks across pages; thead/tfoot repeat on every page and
+       hold spacers that reserve room for the fixed header/footer. */
+    #printZone tr,
+    #printZone td { page-break-inside: auto; break-inside: auto; }
+    #printZone thead { display: table-header-group; }
+    #printZone tfoot { display: table-footer-group; }
+    #printZone .doc-print-col {
+        width: 50%;
+        vertical-align: top;
+        padding: 0 0.6cm;
     }
-    #printZone .doc-page-body .ql-container.ql-snow,
-    #printZone .doc-editor-split .ql-container.ql-snow { border: none !important; }
+    #printZone .doc-print-col:first-child { border-right: 1px solid #c0b9b0; padding-left: 0; }
+    #printZone .doc-print-col:last-child { padding-right: 0; }
+    #printZone .doc-print-cell { vertical-align: top; }
+
+    /* Header/footer pinned to the top/bottom of EVERY printed page. position:
+       fixed elements repeat per page; the spacers below reserve their height so
+       the flowing body never overlaps them. */
+    #printZone .doc-print-runhdr,
+    #printZone .doc-print-runftr {
+        position: fixed;
+        left: 0; right: 0;
+        background: #fff !important;
+    }
+    #printZone .doc-print-runhdr { top: 0; }
+    #printZone .doc-print-runftr { bottom: 0; }
+    #printZone .doc-print-spacer-h { height: 1.5cm; }
+    #printZone .doc-print-spacer-f { height: 1.5cm; }
+    /* Force black header/footer on the printed (white) page, even in dark mode. */
+    #printZone .doc-print-runhdr .page-header-editor,
+    #printZone .doc-print-runftr .page-footer-editor { color: #1c1917 !important; }
+
+    /* Let the read-only Quill grow with its content (no fixed-height clip). */
+    #printZone .ql-container.ql-snow { border: none !important; }
     #printZone .ql-container,
-    #printZone .ql-editor { overflow: hidden !important; }
+    #printZone .ql-editor {
+        height: auto !important;
+        max-height: none !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+    }
+    #printZone .ql-editor {
+        padding: 0 !important;
+        font-family: 'Times New Roman', Times, Georgia, serif;
+        font-size: 12pt;
+        line-height: 1.65;
+        color: #1c1917;
+    }
     #printZone .ql-variable {
         background: transparent !important;
         border: none !important;
@@ -2799,7 +3148,10 @@ body.tpl-dragging .folder-card { border-style: dashed; }
         font-size: inherit !important;
         padding: 0 !important;
     }
-    #printZone .doc-col { border-color: #c0b9b0 !important; }
+
+    /* Small physical top/bottom margin; the fixed header/footer + spacers add
+       the rest of the vertical breathing room (≈2.5cm before/after content). */
+    @page { size: A4; margin: 1cm 3cm; }
 }
 
 /* ================================================

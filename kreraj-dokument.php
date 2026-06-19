@@ -45,9 +45,7 @@ if ($editDoc && current_role() === 'praktikant'
 // offers these as one-click suggestions so variable names stay consistent
 // across every document in the template.
 $templateVarMap = []; // name => [docName, ...]
-$prefillHeader  = '';  // header/footer of the latest document in the template,
-$prefillFooter  = '';  // used to seed a brand-new document (not when editing).
-$stmt = $pdo->prepare('SELECT id, name, variables, pages FROM documents WHERE template_id = ? AND company_id = ? ORDER BY sort_order ASC, id ASC');
+$stmt = $pdo->prepare('SELECT id, name, variables FROM documents WHERE template_id = ? AND company_id = ? ORDER BY sort_order ASC, id ASC');
 $stmt->execute([$templateId, $companyId]);
 foreach ($stmt->fetchAll() as $row) {
     if ($docId && (int)$row['id'] === $docId) continue; // skip the doc being edited
@@ -55,17 +53,6 @@ foreach ($stmt->fetchAll() as $row) {
     foreach ($vars as $v) {
         if (!isset($templateVarMap[$v]))                      $templateVarMap[$v] = [];
         if (!in_array($row['name'], $templateVarMap[$v], true)) $templateVarMap[$v][] = $row['name'];
-    }
-
-    // Seed a new document with the most recent header/footer found in the
-    // template (iteration is ascending, so the last non-empty value wins).
-    if (!$docId) {
-        $pages = json_decode($row['pages'], true) ?: [];
-        $first = $pages[0] ?? null;
-        if ($first) {
-            if (!empty($first['header'])) $prefillHeader = $first['header'];
-            if (!empty($first['footer'])) $prefillFooter = $first['footer'];
-        }
     }
 }
 $templateVars = [];
@@ -109,6 +96,14 @@ foreach ($templateVarMap as $name => $docNames) {
         <!-- Quill toolbar (sticky) -->
         <div class="doc-toolbar-sticky">
             <div id="quill-toolbar">
+                <span class="ql-formats" data-group="Историја">
+                    <button id="btnUndo" type="button" title="Врати (Ctrl+Z)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+                    </button>
+                    <button id="btnRedo" type="button" title="Повтори (Ctrl+Y)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"/></svg>
+                    </button>
+                </span>
                 <span class="ql-formats" data-group="Стил">
                     <select class="ql-header" title="Стил на текст и наслови">
                         <option value="1">Наслов 1</option>
@@ -164,19 +159,18 @@ foreach ($templateVarMap as $name => $docNames) {
             </div>
         </div>
 
-        <!-- Pages area -->
+        <!-- Pages area — one continuous A4 sheet; the browser paginates at print -->
         <div class="doc-page-wrap">
             <div id="pagesContainer">
 
-                <!-- Page 1 (always present) -->
-                <div class="doc-page" id="page-0">
+                <div class="doc-sheet" id="docSheet">
                     <div class="doc-page-header">
-                        <div class="page-header-editor"
+                        <div class="page-header-editor" id="docHeaderEditor"
                              contenteditable="true"
-                             data-placeholder="Наслов на документот..."
+                             data-placeholder="Заглавие (се повторува на секоја страница)..."
                              spellcheck="false"></div>
                     </div>
-                    <div class="doc-page-body">
+                    <div class="doc-sheet-body" id="docSheetBody">
                         <div class="doc-editor-single">
                             <div class="q-single"></div>
                         </div>
@@ -187,21 +181,14 @@ foreach ($templateVarMap as $name => $docNames) {
                         </div>
                     </div>
                     <div class="doc-page-footer">
-                        <div class="page-footer-editor"
+                        <div class="page-footer-editor" id="docFooterEditor"
                              contenteditable="true"
-                             data-placeholder="Белешка / подножје..."
+                             data-placeholder="Подножје (се повторува на секоја страница)..."
                              spellcheck="false"></div>
                     </div>
                 </div>
 
             </div>
-
-            <button id="btnAddPage" class="doc-add-page-btn">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M5 12h14"/><path d="M12 5v14"/>
-                </svg>
-                Додај страница
-            </button>
         </div>
 
     </div>
@@ -236,8 +223,6 @@ foreach ($templateVarMap as $name => $docNames) {
     var TEMPLATE_ID    = <?= $templateId ?>;
     var DOC_ID         = <?= $docId ?>;
     var TEMPLATE_VARS  = <?= json_encode($templateVars, JSON_UNESCAPED_UNICODE) ?>;
-    var PREFILL_HEADER = <?= json_encode($prefillHeader, JSON_UNESCAPED_UNICODE) ?>;
-    var PREFILL_FOOTER = <?= json_encode($prefillFooter, JSON_UNESCAPED_UNICODE) ?>;
     </script>
     <script>
     (function () {
@@ -264,11 +249,17 @@ foreach ($templateVarMap as $name => $docNames) {
 
         /* ─────────────────────────────────────────────
            State
+           ─────────────────────────────────────────────
+           The editor is ONE continuous Quill per stream
+           (qSingle, or qLeft + qRight in split mode). There is
+           no pagination in JS at all — the document is stored as
+           a single continuous stream and the browser paginates it
+           at print time. quillMain is an alias to qSingle.
         ───────────────────────────────────────────── */
         var splitActive = false;
         var activeQuill = null;
-        var quillMain   = null;
-        var pageSeq     = 0;
+        var quillMain   = null;   // alias of qSingle
+        var qSingle = null, qLeft = null, qRight = null;
         var Delta       = Quill.import('delta');
 
         // Local auto-saved draft of this document (resumable via the bottom-right
@@ -295,15 +286,12 @@ foreach ($templateVarMap as $name => $docNames) {
         // Names of variables currently embedded anywhere in this document.
         function collectLiveVarNames() {
             var names = {};
-            document.querySelectorAll('.doc-page').forEach(function (pageEl) {
-                ['_quillSingle', '_quillLeft', '_quillRight'].forEach(function (key) {
-                    var q = pageEl[key];
-                    if (!q) return;
-                    (q.getContents().ops || []).forEach(function (op) {
-                        if (op.insert && typeof op.insert === 'object' && op.insert.variable) {
-                            names[op.insert.variable] = true;
-                        }
-                    });
+            [qSingle, qLeft, qRight].forEach(function (q) {
+                if (!q) return;
+                (q.getContents().ops || []).forEach(function (op) {
+                    if (op.insert && typeof op.insert === 'object' && op.insert.variable) {
+                        names[op.insert.variable] = true;
+                    }
                 });
             });
             return names;
@@ -422,9 +410,11 @@ foreach ($templateVarMap as $name => $docNames) {
                 var change = new Delta().retain(range.index);
                 if (range.length) change.delete(range.length);
                 change.insert({ variable: name });
-                q.updateContents(change, 'user');
-                q.setSelection(range.index + 1, 0, 'silent');
-                q.focus();
+                preserveScroll(function () {
+                    q.updateContents(change, 'user');
+                    q.setSelection(range.index + 1, 0, 'silent');
+                    q.focus();
+                });
             }, selectedText);
         }
 
@@ -449,20 +439,71 @@ foreach ($templateVarMap as $name => $docNames) {
             });
         }
 
-        function makeQuill(el, placeholder, ownsToolbar, pageEl, col) {
+        // The page actually scrolls inside .main-content (not the window).
+        var SCROLL_CONTAINER = document.querySelector('.main-content');
+
+        // Snapshot the current scroll position NOW, then keep restoring it over
+        // the next few frames. Quill scrolls the caret/selection into view after
+        // many actions (paste, applying a toolbar format, focus) which yanks the
+        // page around — call this BEFORE Quill does its work to hold the viewport.
+        function pinScroll() {
+            var sc = SCROLL_CONTAINER;
+            var top  = sc ? sc.scrollTop : 0;
+            var winX = window.scrollX, winY = window.scrollY;
+            function restore() {
+                if (sc) sc.scrollTop = top;
+                window.scrollTo(winX, winY);
+            }
+            restore();
+            requestAnimationFrame(restore);
+            setTimeout(restore, 0);
+            setTimeout(restore, 40);
+        }
+
+        // Run `fn` (our own caret-moving change, e.g. variable insert / undo),
+        // then hold the viewport so Quill's scroll-into-view can't yank the page.
+        function preserveScroll(fn) {
+            var sc = SCROLL_CONTAINER;
+            var top = sc ? sc.scrollTop : window.scrollY;
+            if (fn) fn();
+            if (sc) sc.scrollTop = top;        // undo a synchronous scroll
+            pinScroll();                        // and any deferred one
+        }
+
+        // Pasting makes Quill scroll the page (it focuses an off-screen clipboard
+        // node, then scrolls the caret into view a tick later). Capture in the
+        // CAPTURE phase on the document — this runs BEFORE Quill's own paste
+        // handler on the editor root — so we record the true pre-paste position.
+        document.addEventListener('paste', function (e) {
+            if (SCROLL_CONTAINER && SCROLL_CONTAINER.contains(e.target)) pinScroll();
+        }, true);
+
+        // Only these formats are allowed in the editor. Quill drops anything
+        // else on paste (Word/Google-Docs fonts, font-sizes, inline-style noise)
+        // while keeping everything the toolbar offers + the variable chip — this
+        // is what makes pasting behave like a clean Google-Docs paste.
+        var ALLOWED_FORMATS = [
+            'bold', 'italic', 'underline', 'strike',
+            'list', 'indent', 'align',
+            'color', 'background', 'header',
+            'variable'
+        ];
+
+        function makeQuill(el, placeholder, ownsToolbar) {
             var q = new Quill(el, {
                 theme: 'snow',
                 modules: { toolbar: ownsToolbar ? '#quill-toolbar' : false },
+                formats: ALLOWED_FORMATS,
                 placeholder: placeholder || 'Започни да пишуваш...',
+                scrollingContainer: SCROLL_CONTAINER || undefined,
             });
-            q._pageEl = pageEl || null;
-            q._col    = col || 'single';
             trackFocus(q);
+            // Remember the editor's selection while it is focused (collapsed or
+            // not). We deliberately ignore blur (range === null) so the range
+            // survives clicking the toolbar — used to re-show the highlight after
+            // a format (e.g. alignment) is applied.
+            q.on('selection-change', function (range) { if (range) q._sel = range; });
             q.on('text-change', function (delta, oldDelta, source) {
-                // Our own reflow edits use the 'silent' source — ignore them
-                // so we never recurse into pagination.
-                if (source === 'silent') return;
-
                 if (source === 'user') {
                     // "/" at the start of a word opens the variable picker (slash menu).
                     // Guarded so dates (12/05), "и/или" and URLs (http://) never trigger it:
@@ -482,386 +523,112 @@ foreach ($templateVarMap as $name => $docNames) {
                             q.setSelection(pos - 1, 0, 'silent');
                             activeQuill = q;
                             setTimeout(insertVariable, 0);
-                            return; // variable insert will retrigger reflow
+                            return;
                         }
                     }
                 }
-
-                // Auto-paginate: spill overflow onto the next page, and pull
-                // content back up when an edit could have freed space (a delete
-                // or a formatting change). Pure inserts only ever push down.
-                var mightShrink = (delta.ops || []).some(function (op) {
-                    return op.delete != null || op.attributes != null;
-                });
-                var sel   = q.getSelection();
-                var atEnd = !sel || sel.index >= q.getLength() - 1;
-                var moved = reflowStream(q._col, q._pageEl, mightShrink);
-                if (moved) restoreCaret(q, sel, atEnd);
-                scheduleSnapshot();
+                // No pagination — the editor just grows. We only refresh the
+                // resumable draft. Programmatic ('silent') loads must not draft.
+                if (source !== 'silent') scheduleSnapshot();
             });
             return q;
         }
 
-        function initSplitForPage(pageEl) {
-            if (pageEl._splitReady) return;
-            pageEl._splitReady = true;
-            var body = pageEl.querySelector('.doc-page-body');
-            pageEl._quillLeft  = makeQuill(body.querySelector('.q-left'),  'Лев текст...',   false, pageEl, 'left');
-            pageEl._quillRight = makeQuill(body.querySelector('.q-right'), 'Десен текст...', false, pageEl, 'right');
-        }
-
         /* ─────────────────────────────────────────────
-           Header / footer sync across all pages
+           Build the continuous editors (one per stream)
         ───────────────────────────────────────────── */
-        document.getElementById('pagesContainer').addEventListener('input', function (e) {
-            var cls = e.target.classList;
-            if (cls.contains('page-header-editor') || cls.contains('page-footer-editor')) {
-                var selector = cls.contains('page-header-editor')
-                    ? '.page-header-editor' : '.page-footer-editor';
-                var html = e.target.innerHTML;
-                document.querySelectorAll(selector).forEach(function (el) {
-                    if (el !== e.target) el.innerHTML = html;
-                });
-            }
-        });
+        var sheet     = document.getElementById('docSheet');
+        var sheetBody = document.getElementById('docSheetBody');
+        var headerEl  = document.getElementById('docHeaderEditor');
+        var footerEl  = document.getElementById('docFooterEditor');
+
+        qSingle = makeQuill(sheetBody.querySelector('.q-single'), 'Започни да пишуваш...', true);
+        qLeft   = makeQuill(sheetBody.querySelector('.q-left'),  'Лев текст...',   false);
+        qRight  = makeQuill(sheetBody.querySelector('.q-right'), 'Десен текст...', false);
+        quillMain   = qSingle;
+        activeQuill = qSingle;
 
         /* ─────────────────────────────────────────────
-           Initialise page 0
-        ───────────────────────────────────────────── */
-        var page0      = document.getElementById('page-0');
-        var page0body  = page0.querySelector('.doc-page-body');
-        quillMain      = makeQuill(page0body.querySelector('.q-single'), 'Започни да пишуваш...', true, page0, 'single');
-        page0._quillSingle = quillMain;
-        activeQuill    = quillMain;
-
-        /* ─────────────────────────────────────────────
-           Page HTML template
-        ───────────────────────────────────────────── */
-        function pageHTML(id) {
-            return '<div class="doc-page-header">' +
-                       '<div class="page-header-editor" contenteditable="true" data-placeholder="Наслов на документот..." spellcheck="false">' +
-                           (document.querySelector('.page-header-editor').innerHTML || '') +
-                       '</div>' +
-                   '</div>' +
-                   '<div class="doc-page-body">' +
-                       '<div class="doc-editor-single"><div class="q-single"></div></div>' +
-                       '<div class="doc-editor-split">' +
-                           '<div class="doc-col"><div class="q-left"></div></div>' +
-                           '<div class="doc-col-divider"></div>' +
-                           '<div class="doc-col"><div class="q-right"></div></div>' +
-                       '</div>' +
-                   '</div>' +
-                   '<div class="doc-page-footer">' +
-                       '<div class="page-footer-editor" contenteditable="true" data-placeholder="Белешка / подножје..." spellcheck="false">' +
-                           (document.querySelector('.page-footer-editor').innerHTML || '') +
-                       '</div>' +
-                   '</div>' +
-                   '<button class="doc-page-delete" data-target="' + id + '" title="Избриши страница">' +
-                       '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
-                   '</button>';
-        }
-
-        /* ─────────────────────────────────────────────
-           Create page (blank)
-        ───────────────────────────────────────────── */
-        function createPage() {
-            pageSeq++;
-            var id  = 'page-' + pageSeq;
-            var div = document.createElement('div');
-            div.className = 'doc-page';
-            div.id = id;
-            if (splitActive) div.classList.add('split-mode');
-            div.innerHTML = pageHTML(id);
-            document.getElementById('pagesContainer').appendChild(div);
-
-            var body    = div.querySelector('.doc-page-body');
-            var qSingle = makeQuill(body.querySelector('.q-single'), 'Започни да пишуваш...', false, div, 'single');
-            div._quillSingle = qSingle;
-
-            if (splitActive) initSplitForPage(div);
-
-            div.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            setTimeout(function () {
-                (splitActive ? div._quillLeft : qSingle).focus();
-            }, 80);
-        }
-
-        /* ─────────────────────────────────────────────
-           Create page with data (for EDIT_DOC restore)
-        ───────────────────────────────────────────── */
-        function createPageWithData(pageData) {
-            pageSeq++;
-            var id  = 'page-' + pageSeq;
-            var div = document.createElement('div');
-            div.className = 'doc-page';
-            div.id = id;
-            if (splitActive) div.classList.add('split-mode');
-            div.innerHTML = pageHTML(id);
-            document.getElementById('pagesContainer').appendChild(div);
-
-            var body    = div.querySelector('.doc-page-body');
-            var qSingle = makeQuill(body.querySelector('.q-single'), 'Започни да пишуваш...', false, div, 'single');
-            div._quillSingle = qSingle;
-
-            if (splitActive) initSplitForPage(div);
-
-            // Load data
-            var h = div.querySelector('.page-header-editor');
-            var f = div.querySelector('.page-footer-editor');
-            if (h && pageData.header) h.innerHTML = pageData.header;
-            if (f && pageData.footer) f.innerHTML = pageData.footer;
-            if (pageData.single && div._quillSingle) div._quillSingle.setContents(pageData.single, 'silent');
-            if (splitActive) {
-                if (pageData.left  && div._quillLeft)  div._quillLeft.setContents(pageData.left,  'silent');
-                if (pageData.right && div._quillRight) div._quillRight.setContents(pageData.right, 'silent');
-            }
-        }
-
-        /* ─────────────────────────────────────────────
-           Auto-pagination (reflow) engine
+           Save / load shape
            ─────────────────────────────────────────────
-           Content that no longer fits on a page spills onto the next page
-           in the same stream ('single' | 'left' | 'right'); auto-created
-           pages are reclaimed when text shrinks. Pages the user added by
-           hand (the "Додај страница" button) are never collapsed.
+           No pagination: a document is stored as a SINGLE page holding the
+           whole continuous stream plus the document-level header/footer. The
+           browser paginates it at print time and repeats header/footer on every
+           A4 page (via the print table's thead/tfoot). buildPages() returns that
+           one-element pages[] array; mergePages() reads it back — and stays
+           backward-compatible with documents saved as multiple pages (it
+           concatenates every page's streams into one and takes the first page's
+           header/footer).
         ───────────────────────────────────────────── */
-        var REFLOW_TOL = 1; // px tolerance for sub-pixel rounding
-        var _reflowing = false;
+        function buildPages() {
+            return [{
+                header: trimHtml(headerEl.innerHTML || ''),
+                footer: trimHtml(footerEl.innerHTML || ''),
+                single: splitActive ? null : getTrimmedContents(qSingle),
+                left:   splitActive ? getTrimmedContents(qLeft)  : null,
+                right:  splitActive ? getTrimmedContents(qRight) : null
+            }];
+        }
 
-        function isOverflowing(q) {
-            return !!q && (q.root.scrollHeight - q.root.clientHeight) > REFLOW_TOL;
-        }
-        function isEmptyStream(q) {
-            return !q || q.getLength() <= 1; // just the mandatory trailing newline
-        }
-        function getPagesArray() {
-            return Array.prototype.slice.call(
-                document.querySelectorAll('#pagesContainer .doc-page'));
-        }
-        function getColQuill(pageEl, col) {
-            if (col === 'single') return pageEl._quillSingle;
-            initSplitForPage(pageEl);
-            return col === 'left' ? pageEl._quillLeft : pageEl._quillRight;
-        }
-        // Quill documents must end with a newline; ensure that before setting.
-        function safeSet(q, delta) {
-            var ops  = delta.ops || [];
-            var last = ops[ops.length - 1];
-            if (!last || typeof last.insert !== 'string' || last.insert.slice(-1) !== '\n') {
-                delta = delta.concat(new Delta().insert('\n'));
-            }
-            q.setContents(delta, 'silent');
-        }
-        // Plain text of a delta, with embeds counted as one (non-newline) char
-        // so string offsets line up with Quill's index units.
-        function deltaToText(delta) {
-            var s = '';
-            (delta.ops || []).forEach(function (op) {
-                if (typeof op.insert === 'string') s += op.insert;
-                else if (op.insert != null) s += '￼';
+        function mergePages(pages) {
+            var single = new Delta(), left = new Delta(), right = new Delta();
+            var header = '', footer = '';
+            (pages || []).forEach(function (p) {
+                if (p.single) single = single.concat(new Delta(p.single));
+                if (p.left)   left   = left.concat(new Delta(p.left));
+                if (p.right)  right  = right.concat(new Delta(p.right));
+                if (!header && p.header) header = p.header;
+                if (!footer && p.footer) footer = p.footer;
             });
-            return s;
+            return { single: single, left: left, right: right, header: header, footer: footer };
         }
-
-        // A blank page spun up purely to hold overflow (not user-added).
-        function createAutoPage() {
-            pageSeq++;
-            var id  = 'page-' + pageSeq;
-            var div = document.createElement('div');
-            div.className = 'doc-page';
-            div.id = id;
-            div._autoCreated = true;
-            if (splitActive) div.classList.add('split-mode');
-            div.innerHTML = pageHTML(id);
-            document.getElementById('pagesContainer').appendChild(div);
-
-            var body = div.querySelector('.doc-page-body');
-            div._quillSingle = makeQuill(body.querySelector('.q-single'), 'Започни да пишуваш...', false, div, 'single');
-            if (splitActive) initSplitForPage(div);
-            return div;
-        }
-
-        function getOrCreateNextPage(pageEl, col) {
-            var nx = pageEl.nextElementSibling;
-            while (nx && !nx.classList.contains('doc-page')) nx = nx.nextElementSibling;
-            if (!nx) nx = createAutoPage();
-            getColQuill(nx, col); // ensure the stream's editor exists
-            return nx;
-        }
-
-        // Remove the tail of `q` that no longer fits and return it as a delta.
-        // The cut is snapped to a paragraph boundary so whole paragraphs move
-        // together; a single paragraph taller than a page falls back to a word
-        // (then character) boundary.
-        function takeOverflow(q) {
-            if (!isOverflowing(q)) return null;
-            var full  = q.getContents();
-            var total = q.getLength();      // includes the final newline
-            var text  = deltaToText(full);
-
-            // Largest prefix length that still fits, via binary search.
-            var lo = 1, hi = total - 1, bestFit = 1;
-            while (lo <= hi) {
-                var mid = (lo + hi) >> 1;
-                safeSet(q, full.slice(0, mid));
-                if (!isOverflowing(q)) { bestFit = mid; lo = mid + 1; }
-                else hi = mid - 1;
-            }
-
-            var cut = -1, needNl = false;
-            for (var i = bestFit; i >= 1; i--) {       // snap to paragraph break
-                if (text.charAt(i - 1) === '\n') { cut = i; break; }
-            }
-            if (cut <= 0) {                            // one giant paragraph
-                for (var j = bestFit; j >= 1; j--) {   // snap to a word break
-                    if (text.charAt(j - 1) === ' ') { cut = j; break; }
-                }
-                if (cut <= 0) cut = bestFit;           // last resort: hard cut
-                needNl = true;
-            }
-
-            var keep = full.slice(0, cut);
-            if (needNl) keep = keep.concat(new Delta().insert('\n'));
-            var overflow = full.slice(cut, total);
-            safeSet(q, keep);
-            return overflow;
-        }
-
-        function prependStream(q, overflow) {
-            safeSet(q, overflow.concat(q.getContents()));
-        }
-
-        // Move the first paragraph of `nq` to the end of `cq`, but only if `cq`
-        // still fits afterwards. Returns true when a paragraph was moved.
-        function pullOneParagraph(cq, nq) {
-            if (isEmptyStream(nq)) return false;
-            var nc       = nq.getContents();
-            var ntext    = deltaToText(nc);
-            var nl       = ntext.indexOf('\n');
-            var firstLen = nl < 0 ? nc.length() : nl + 1;
-            var move     = nc.slice(0, firstLen);
-            var rest     = nc.slice(firstLen);
-
-            var cqOld    = cq.getContents();
-            safeSet(cq, isEmptyStream(cq) ? move : cqOld.concat(move));
-            if (isOverflowing(cq)) { safeSet(cq, cqOld); return false; }
-
-            safeSet(nq, rest);
-            return true;
-        }
-
-        // Drop auto-created pages that ended up empty across every stream.
-        function cleanupEmptyAutoPages() {
-            var removed = false;
-            getPagesArray().forEach(function (p) {
-                if (!p._autoCreated) return;
-                var empty = isEmptyStream(p._quillSingle)
-                    && (!p._quillLeft  || isEmptyStream(p._quillLeft))
-                    && (!p._quillRight || isEmptyStream(p._quillRight));
-                if (empty && document.querySelectorAll('#pagesContainer .doc-page').length > 1) {
-                    p.remove();
-                    removed = true;
-                }
-            });
-            return removed;
-        }
-
-        // Normalise one stream from `fromPageEl` to the end of the document.
-        // Returns true if any content moved (so the caller can fix the caret).
-        function reflowStream(col, fromPageEl, compact) {
-            if (_reflowing) return false;
-            if (compact === undefined) compact = true;
-            _reflowing = true;
-            var changed = false;
-            try {
-                var pages = getPagesArray();
-                var start = fromPageEl ? pages.indexOf(fromPageEl) : 0;
-                if (start < 0) start = 0;
-
-                // Push overflow downwards, creating pages as needed.
-                for (var i = start; ; i++) {
-                    pages = getPagesArray();
-                    if (i >= pages.length) break;
-                    var q = getColQuill(pages[i], col);
-                    var guard = 0;
-                    while (q && isOverflowing(q) && guard++ < 300) {
-                        var overflow = takeOverflow(q);
-                        if (!overflow) break;
-                        var next = getOrCreateNextPage(pages[i], col);
-                        prependStream(getColQuill(next, col), overflow);
-                        changed = true;
-                    }
-                }
-
-                // Pull content back up to fill freed space (only when an edit
-                // could have shrunk content). Only auto-created pages are
-                // compacted — manual page breaks are preserved.
-                pages = getPagesArray();
-                for (var a = start; compact && a < pages.length - 1; a++) {
-                    var cq = getColQuill(pages[a], col);
-                    var guard2 = 0;
-                    while (guard2++ < 500) {
-                        if (isOverflowing(cq)) break;
-                        var nq = null, blocked = false;
-                        for (var b = a + 1; b < pages.length; b++) {
-                            var t = getColQuill(pages[b], col);
-                            if (isEmptyStream(t)) continue;
-                            if (!pages[b]._autoCreated) blocked = true;
-                            nq = t; break;
-                        }
-                        if (!nq || blocked) break;
-                        if (!pullOneParagraph(cq, nq)) break;
-                        changed = true;
-                    }
-                }
-
-                if (cleanupEmptyAutoPages()) changed = true;
-            } finally {
-                _reflowing = false;
-            }
-            return changed;
-        }
-
-        // After content shifts between pages, keep the caret where the user is
-        // working: at the very end of the stream when appending, otherwise as
-        // close as possible to the original position.
-        function restoreCaret(q, sel, atEnd) {
-            if (!sel) return;
-            if (atEnd) {
-                var pages = getPagesArray();
-                var lq = getColQuill(pages[pages.length - 1], q._col);
-                if (lq) { lq.focus(); lq.setSelection(Math.max(lq.getLength() - 1, 0), 0); }
-            } else {
-                var len = q.getLength();
-                q.setSelection(Math.min(sel.index, Math.max(len - 1, 0)), 0);
-            }
-        }
-
-        document.getElementById('btnAddPage').addEventListener('click', createPage);
-        document.getElementById('btnAddPage').addEventListener('click', scheduleSnapshot);
-
-        /* ─────────────────────────────────────────────
-           Delete page
-        ───────────────────────────────────────────── */
-        document.getElementById('pagesContainer').addEventListener('click', function (e) {
-            var btn = e.target.closest('.doc-page-delete');
-            if (!btn) return;
-            var target = document.getElementById(btn.dataset.target);
-            if (!target) return;
-            target.remove();
-            var remaining = document.querySelectorAll('.doc-page');
-            var last = remaining[remaining.length - 1];
-            if (!last) return;
-            var refocus = (splitActive && last._quillLeft) ? last._quillLeft
-                        : (last._quillSingle || quillMain);
-            refocus.focus();
-            scheduleSnapshot();
-        });
 
         /* ─────────────────────────────────────────────
            Toolbar bridge (routes to activeQuill)
         ───────────────────────────────────────────── */
         var toolbarEl = document.getElementById('quill-toolbar');
+
+        // Applying a toolbar format (bold, align, colour, heading…) makes Quill
+        // re-focus the editor and scroll the selection into view, which jumps the
+        // page. Snapshot the scroll in the CAPTURE phase — before Quill's own
+        // button handlers and our split-mode bridge below run — and hold it.
+        toolbarEl.addEventListener('mousedown', pinScroll, true);
+        toolbarEl.addEventListener('click', pinScroll, true);
+
+        // Keep the selection highlight visible WHILE a dropdown (alignment,
+        // colour, heading…) is open: cancel the default focus-shift on the picker
+        // LABEL's mousedown so opening the dropdown doesn't blur the editor.
+        // (Only the label — preventing it on the option items stops Quill from
+        // registering the choice. The item click then applies the format, and the
+        // click handler below re-selects the range to keep the highlight.)
+        toolbarEl.addEventListener('mousedown', function (e) {
+            if (e.target.closest('.ql-picker-label')) e.preventDefault();
+        }, true);
+
+        // Keep the text visually selected after a toolbar action. Clicking the
+        // toolbar blurs the editor, so the browser stops painting the selection
+        // highlight even though the format still applies (most noticeable with
+        // alignment, which is a dropdown). Re-focus + re-select the tracked range
+        // after the format is applied, so the highlight stays visible.
+        toolbarEl.addEventListener('click', function (e) {
+            var q = activeQuill;
+            if (!q || !q._sel || q._sel.length === 0) return;
+            // Don't refocus while merely opening a dropdown (it would close it),
+            // and let undo/redo manage their own caret.
+            if (e.target.closest('#btnUndo, #btnRedo')) return;
+            if (e.target.closest('.ql-picker-label') && !e.target.closest('.ql-picker-item')) return;
+            var r = { index: q._sel.index, length: q._sel.length };
+            function restore() {
+                preserveScroll(function () {
+                    q.focus();
+                    q.setSelection(r.index, r.length, 'silent');
+                });
+            }
+            // Run after Quill applies the format, and again a little later to beat
+            // its deferred selection/dropdown-close update.
+            setTimeout(restore, 0);
+            setTimeout(restore, 60);
+        }, true);
 
         // Quill replaces the <select>s with its own markup, so put the plain-language
         // tooltips on the generated dropdown labels for non-technical users.
@@ -924,82 +691,94 @@ foreach ($templateVarMap as $name => $docNames) {
         btnSplit.addEventListener('click', function () {
             splitActive = !splitActive;
             btnSplit.classList.toggle('is-active', splitActive);
-            document.querySelectorAll('.doc-page').forEach(function (pageEl) {
-                pageEl.classList.toggle('split-mode', splitActive);
-                if (splitActive) initSplitForPage(pageEl);
-            });
+            sheet.classList.toggle('split-mode', splitActive);
             if (splitActive) {
-                activeQuill = page0._quillLeft;
-                setTimeout(function () { page0._quillLeft.focus(); }, 60);
+                activeQuill = qLeft;
+                setTimeout(function () { qLeft.focus(); }, 60);
             } else {
-                activeQuill = quillMain;
-                setTimeout(function () { quillMain.focus(); }, 60);
+                activeQuill = qSingle;
+                setTimeout(function () { qSingle.focus(); }, 60);
             }
             scheduleSnapshot();
         });
 
         /* ─────────────────────────────────────────────
+           Undo / redo — operate on the focused editor's own history. Buttons
+           don't carry a ql- class, so Quill's toolbar leaves them to us.
+        ───────────────────────────────────────────── */
+        (function () {
+            function run(which) {
+                var q = activeQuill || quillMain;
+                if (!q || !q.history) return;
+                preserveScroll(function () {
+                    q.history[which]();
+                    q.focus();
+                });
+            }
+            // mousedown preventDefault keeps the editor selection/focus intact.
+            ['btnUndo', 'btnRedo'].forEach(function (id) {
+                var btn = document.getElementById(id);
+                btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            });
+            document.getElementById('btnUndo').addEventListener('click', function () { run('undo'); });
+            document.getElementById('btnRedo').addEventListener('click', function () { run('redo'); });
+        }());
+
+        /* ─────────────────────────────────────────────
            Load a state object (EDIT_DOC or a local draft) into the editor
         ───────────────────────────────────────────── */
+        function applyStreams(streams) {
+            if (streams.single != null) qSingle.setContents(new Delta(streams.single), 'silent');
+            if (streams.left   != null) qLeft.setContents(new Delta(streams.left),   'silent');
+            if (streams.right  != null) qRight.setContents(new Delta(streams.right), 'silent');
+        }
+
+        // Accepts both shapes: a saved document ({ pages: [...] }) and a local
+        // draft ({ single|left|right } continuous streams). Legacy multi-page
+        // documents are concatenated into one continuous stream by mergePages.
         function loadState(state) {
             document.getElementById('docTitleInput').value = state.name || '';
             splitActive = !!parseInt(state.is_split);
             if (splitActive) {
                 document.getElementById('btnSplitToggle').classList.add('is-active');
-                page0.classList.add('split-mode');
-                initSplitForPage(page0);
+                sheet.classList.add('split-mode');
+                activeQuill = qLeft;
             }
-            var pages = state.pages || [];
-            if (pages.length > 0) {
-                var p0 = pages[0];
-                var h0 = page0.querySelector('.page-header-editor');
-                var f0 = page0.querySelector('.page-footer-editor');
-                if (h0 && p0.header) h0.innerHTML = p0.header;
-                if (f0 && p0.footer) f0.innerHTML = p0.footer;
-                if (p0.single && page0._quillSingle) page0._quillSingle.setContents(p0.single, 'silent');
-                if (splitActive) {
-                    if (p0.left  && page0._quillLeft)  page0._quillLeft.setContents(p0.left,  'silent');
-                    if (p0.right && page0._quillRight) page0._quillRight.setContents(p0.right, 'silent');
-                }
-                for (var pi = 1; pi < pages.length; pi++) createPageWithData(pages[pi]);
+
+            var streams, header, footer;
+            if (state.single !== undefined || state.left !== undefined || state.right !== undefined) {
+                streams = { single: state.single, left: state.left, right: state.right };
+                header  = state.header || '';
+                footer  = state.footer || '';
+            } else {
+                streams = mergePages(state.pages || []);
+                header  = streams.header || '';
+                footer  = streams.footer || '';
             }
-            // Re-paginate restored content in case anything no longer fits.
-            setTimeout(function () {
-                if (splitActive) { reflowStream('left', page0); reflowStream('right', page0); }
-                else            { reflowStream('single', page0); }
-            }, 0);
+            if (header) headerEl.innerHTML = header;
+            if (footer) footerEl.innerHTML = footer;
+            applyStreams(streams);
         }
 
         /* ─────────────────────────────────────────────
-           Local draft — auto-saved snapshot, resumable from the pill
+           Local draft — auto-saved snapshot of the continuous streams,
+           resumable from the pill.
         ───────────────────────────────────────────── */
-        function collectPages() {
-            var pages = [];
-            document.querySelectorAll('.doc-page').forEach(function (pageEl) {
-                pages.push({
-                    header: trimHtml((pageEl.querySelector('.page-header-editor') || {}).innerHTML || ''),
-                    footer: trimHtml((pageEl.querySelector('.page-footer-editor') || {}).innerHTML || ''),
-                    single: (!splitActive && pageEl._quillSingle) ? getTrimmedContents(pageEl._quillSingle) : null,
-                    left:   (splitActive  && pageEl._quillLeft)   ? getTrimmedContents(pageEl._quillLeft)   : null,
-                    right:  (splitActive  && pageEl._quillRight)  ? getTrimmedContents(pageEl._quillRight)  : null,
-                });
-            });
-            return pages;
+        function collectContinuous() {
+            return {
+                header: trimHtml(headerEl.innerHTML || ''),
+                footer: trimHtml(footerEl.innerHTML || ''),
+                single: splitActive ? null : getTrimmedContents(qSingle),
+                left:   splitActive ? getTrimmedContents(qLeft)  : null,
+                right:  splitActive ? getTrimmedContents(qRight) : null,
+            };
         }
 
         function editorIsEmpty() {
             if (document.getElementById('docTitleInput').value.trim()) return false;
-            var has = false;
-            document.querySelectorAll('.doc-page').forEach(function (pageEl) {
-                ['_quillSingle', '_quillLeft', '_quillRight'].forEach(function (k) {
-                    if (pageEl[k] && pageEl[k].getText().trim()) has = true;
-                });
-                var h = pageEl.querySelector('.page-header-editor');
-                var f = pageEl.querySelector('.page-footer-editor');
-                if (h && h.textContent.trim()) has = true;
-                if (f && f.textContent.trim()) has = true;
-            });
-            return !has;
+            if (headerEl.textContent.trim() || footerEl.textContent.trim()) return false;
+            if (splitActive) return !(qLeft.getText().trim() || qRight.getText().trim());
+            return !qSingle.getText().trim();
         }
 
         function clearDraft() {
@@ -1019,10 +798,15 @@ foreach ($templateVarMap as $name => $docNames) {
                 if (!_loadedFromDraft) clearDraft();
                 return;
             }
+            var streams = collectContinuous();
             var state = {
                 name:     document.getElementById('docTitleInput').value,
                 is_split: splitActive ? 1 : 0,
-                pages:    collectPages(),
+                header:   streams.header,
+                footer:   streams.footer,
+                single:   streams.single,
+                left:     streams.left,
+                right:    streams.right,
                 ts:       Date.now()
             };
             try { sessionStorage.setItem(DOC_DRAFT_KEY, JSON.stringify(state)); } catch (e) {}
@@ -1047,40 +831,38 @@ foreach ($templateVarMap as $name => $docNames) {
         }
 
         /* ─────────────────────────────────────────────
-           Initial content: local draft → EDIT_DOC → blank (+ header/footer prefill)
+           Initial content: local draft → EDIT_DOC → blank
         ───────────────────────────────────────────── */
         var _docDraft = null;
         try { _docDraft = JSON.parse(sessionStorage.getItem(DOC_DRAFT_KEY)); } catch (e) {}
 
-        if (_docDraft && _docDraft.pages && _docDraft.pages.length) {
+        function draftHasContent(d) {
+            return !!d && (d.single !== undefined || d.left !== undefined ||
+                           d.right !== undefined || (d.pages && d.pages.length));
+        }
+
+        if (draftHasContent(_docDraft)) {
             loadState(_docDraft);
         } else if (EDIT_DOC) {
             loadState(EDIT_DOC);
-        } else if (PREFILL_HEADER || PREFILL_FOOTER) {
-            // New document: inherit the header/footer from the template's most
-            // recent document so the user doesn't retype them every time.
-            var ph = page0.querySelector('.page-header-editor');
-            var pf = page0.querySelector('.page-footer-editor');
-            if (ph && PREFILL_HEADER) ph.innerHTML = PREFILL_HEADER;
-            if (pf && PREFILL_FOOTER) pf.innerHTML = PREFILL_FOOTER;
         }
 
-        // Auto-snapshot on any edit (typing, title, header/footer changes), and
-        // flush the latest state when leaving so nothing typed is lost.
+        // Auto-snapshot on any edit (typing, title changes), and flush the
+        // latest state when leaving so nothing typed is lost.
         document.addEventListener('input', scheduleSnapshot);
         window.addEventListener('beforeunload', snapshotDraft);
 
         // Signature of the state the document opened with. snapshotDraft() compares
         // against this so merely opening/viewing a document never creates a draft —
         // only a real change does. If we resumed an existing draft, keep it as-is
-        // when nothing changed. Captured after the initial reflow settles.
-        var _loadedFromDraft = !!(_docDraft && _docDraft.pages && _docDraft.pages.length);
+        // when nothing changed. Captured after the initial load settles.
+        var _loadedFromDraft = draftHasContent(_docDraft);
         var _initialSig = null;
         function draftSignature() {
             return JSON.stringify({
                 name:     document.getElementById('docTitleInput').value,
                 is_split: splitActive ? 1 : 0,
-                pages:    collectPages()
+                streams:  collectContinuous()
             });
         }
         setTimeout(function () { _initialSig = draftSignature(); }, 50);
@@ -1105,14 +887,13 @@ foreach ($templateVarMap as $name => $docNames) {
             return result;
         }
 
-        // Strip leading/trailing whitespace (incl. &nbsp; and <br>) from
-        // contenteditable HTML so stray trailing spaces can't push content.
+        // Strip leading/trailing whitespace (incl. &nbsp; and <br>) from the
+        // contenteditable header/footer HTML; collapse to '' when effectively empty.
         function trimHtml(html) {
             if (!html) return '';
             var trimmed = html
                 .replace(/^(?:&nbsp;|\s|<br\s*\/?>)+/gi, '')
                 .replace(/(?:&nbsp;|\s|<br\s*\/?>)+$/gi, '');
-            // Drop content that is effectively empty after trimming.
             var tmp = document.createElement('div');
             tmp.innerHTML = trimmed;
             if (!tmp.textContent.replace(/ /g, '').trim()) return '';
@@ -1132,8 +913,18 @@ foreach ($templateVarMap as $name => $docNames) {
                 var last = ops[ops.length - 1];
                 if (typeof last.insert !== 'string') break;
                 var stripped = last.insert.replace(/[ \t\r\n]+$/, '');
-                if (stripped === '') { ops.pop(); }
-                else { last.insert = stripped; break; }
+                if (stripped === '') {
+                    // A trailing whitespace/newline op that carries block
+                    // formatting (align, header, list, indent) is the LAST
+                    // paragraph's terminating newline — keep it, and its format,
+                    // instead of dropping it. Otherwise the final line's
+                    // alignment/heading is lost on save.
+                    if (last.attributes) { last.insert = '\n'; break; }
+                    ops.pop();
+                } else {
+                    last.insert = stripped;
+                    break;
+                }
             }
             var tail = ops[ops.length - 1];
             if (!tail || typeof tail.insert !== 'string') ops.push({ insert: '\n' });
@@ -1150,6 +941,20 @@ foreach ($templateVarMap as $name => $docNames) {
             this.classList.remove('input-error');
         });
 
+        // Briefly turn the save button green with a check mark to confirm a save,
+        // then animate it back to its normal state.
+        var CHECK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+        function showSaved(btn) {
+            btn.classList.add('btn-saved');
+            btn.innerHTML = CHECK_SVG + ' Зачувано';
+            clearTimeout(btn._savedTimer);
+            btn._savedTimer = setTimeout(function () {
+                btn.classList.remove('btn-saved');
+                btn.innerHTML = btn._origHtml;
+                btn.disabled = false;
+            }, 1900);
+        }
+
         document.getElementById('btnSave').addEventListener('click', function () {
             var titleInput = document.getElementById('docTitleInput');
             var name = titleInput.value.trim();
@@ -1160,9 +965,10 @@ foreach ($templateVarMap as $name => $docNames) {
             }
             titleInput.classList.remove('input-error');
 
-            // Persist only the content for the active layout (collectPages drops
-            // the inactive split side so stale content can't linger after a toggle).
-            var pages = collectPages();
+            // Slice the continuous editor into A4 pages (the saved shape every
+            // consumer already understands). buildPages keeps only the active
+            // layout, so stale split/single content can't linger after a toggle.
+            var pages = buildPages();
 
             var varNames = extractVarNamesFromPages(pages);
 
@@ -1177,27 +983,48 @@ foreach ($templateVarMap as $name => $docNames) {
             else        params.set('template_id', TEMPLATE_ID);
 
             var btn = document.getElementById('btnSave');
+            if (!btn._origHtml) btn._origHtml = btn.innerHTML;
             btn.disabled = true;
-            btn.textContent = 'Зачувува...';
 
             fetch('api/document_api.php', { method: 'POST', body: params })
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
                     if (res.success) {
-                        _saving = true;
-                        clearDraft(); // saved to DB → drop the local draft + pill
-                        window.location.href = 'pregled-shablon.php?id=' + TEMPLATE_ID;
+                        // Stay on the page (no redirect). Drop the draft under the
+                        // key this doc was edited under FIRST…
+                        clearDraft();
+                        // …then, if this was a brand-new doc, adopt the id the
+                        // server assigned so later saves update it (no duplicates)
+                        // and a refresh reopens the saved document.
+                        if (!DOC_ID && res.id) {
+                            DOC_ID = res.id;
+                            try {
+                                history.replaceState(null, '',
+                                    'kreraj-dokument.php?doc_id=' + DOC_ID + '&template_id=' + TEMPLATE_ID);
+                            } catch (e) {}
+                            DOC_DRAFT_KEY = 'fakta_doc_draft_d' + DOC_ID + DOC_CO;
+                        }
+                        // The just-saved state is the new "unchanged" baseline, so
+                        // it won't immediately re-create a draft pill.
+                        _initialSig = draftSignature();
+                        showSaved(btn);
                     } else {
                         alert(res.message || 'Грешка при зачувување.');
                         btn.disabled = false;
-                        btn.textContent = 'Зачувај документ';
                     }
                 })
                 .catch(function () {
                     alert('Грешка при поврзување.');
                     btn.disabled = false;
-                    btn.textContent = 'Зачувај документ';
                 });
+        });
+
+        // Ctrl+S (Cmd+S) → save, instead of the browser's "save page" dialog.
+        document.addEventListener('keydown', function (e) {
+            if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                document.getElementById('btnSave').click();
+            }
         });
 
     }());

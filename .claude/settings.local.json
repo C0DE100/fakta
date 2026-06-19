@@ -17,7 +17,22 @@
       "Bash(curl -s -i http://127.0.0.1:8099/index.php)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://127.0.0.1:8099/landing.php)",
       "Bash(curl -s -i \"http://127.0.0.1:8099/api/client_api.php?action=get_all\")",
-      "Bash(curl -s \"http://127.0.0.1:8099/api/client_api.php?action=get_all\")"
+      "Bash(curl -s \"http://127.0.0.1:8099/api/client_api.php?action=get_all\")",
+      "Bash(awk '/^    \\\\\\(function \\\\\\(\\\\\\) \\\\{/{f=1} f{print} /^    \\\\}\\\\\\(\\\\\\)\\\\\\);/{if\\(f\\)exit}' kreraj-dokument.php)",
+      "Read(//tmp/**)",
+      "Bash(node --check /tmp/kreraj_ic.js)",
+      "Bash(awk '/^    \\\\\\(function \\\\\\(\\\\\\) \\\\{/{f=1} f{print} /^    \\\\}\\\\\\(\\\\\\)\\\\\\);/{if\\(f\\){exit}}' pregled-shablon.php)",
+      "Bash(node --check /tmp/pregled_ic.js)",
+      "Bash(/c/xampp/php/php.exe -l kreraj-dokument.php)",
+      "Bash(/c/xampp/php/php.exe -l pregled-shablon.php)",
+      "Bash(node --check /tmp/k.js)",
+      "Bash(awk '/^    \\\\\\(function \\\\\\(\\\\\\) \\\\{/{f=1} f{print} /^    \\\\}\\\\\\(\\\\\\)\\\\\\);/{if\\(f\\)exit}' pregled-shablon.php)",
+      "Bash(cd /c/xampp/htdocs/fakta *)",
+      "Bash(node --check /tmp/p.js)",
+      "Bash(node --check js/draft-workspace.js)"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
     ]
   }
 }

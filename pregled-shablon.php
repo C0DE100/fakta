@@ -222,6 +222,23 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
         }
 
         /* ─────────────────────────────────────────────
+           Merge a document's pages[] into one continuous stream per column.
+           New docs save a single page; legacy multi-page docs (with old
+           header/footer/page-break markers) concatenate into one flow.
+        ───────────────────────────────────────────── */
+        function mergePages(pages) {
+            var single = null, left = null, right = null, header = '', footer = '';
+            (pages || []).forEach(function (p) {
+                if (p.single) single = single ? { ops: single.ops.concat(p.single.ops) } : { ops: p.single.ops.slice() };
+                if (p.left)   left   = left   ? { ops: left.ops.concat(p.left.ops) }     : { ops: p.left.ops.slice() };
+                if (p.right)  right  = right  ? { ops: right.ops.concat(p.right.ops) }   : { ops: p.right.ops.slice() };
+                if (!header && p.header) header = p.header;
+                if (!footer && p.footer) footer = p.footer;
+            });
+            return { single: single, left: left, right: right, header: header, footer: footer };
+        }
+
+        /* ─────────────────────────────────────────────
            Variable helpers
            doc.variables is a plain array saved at write-time,
            e.g. ["ime", "datum", "firma"]
@@ -295,8 +312,8 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
             DOCS.forEach(function (doc) {
                 var el = document.getElementById('preview-' + doc.id);
                 if (!el) return;
-                var page = (doc.pages && doc.pages.length > 0) ? doc.pages[0] : null;
-                if (!page) return;
+                var page = mergePages(doc.pages);
+                if (!page.single && !page.left && !page.right) return;
 
                 if (parseInt(doc.is_split)) {
                     // Two-column preview so it's clear the document is split.
@@ -350,79 +367,71 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
         function buildPrintZone(doc, values) {
             var zone = document.getElementById('printZone');
             zone.innerHTML = '';
+            zone.appendChild(buildPrintTable(mergePages(doc.pages), !!parseInt(doc.is_split), values));
+        }
 
+        // The header/footer are pinned to the top/bottom of EVERY printed page
+        // via position:fixed (they repeat per page). The table's <thead>/<tfoot>
+        // hold empty spacers of the same height so the flowing <tbody> content
+        // never runs under them. <tbody> breaks across A4 pages.
+        function buildPrintTable(page, split, values) {
+            var cols = split ? 2 : 1;
             var wrap = document.createElement('div');
-            wrap.className = 'doc-page-wrap';
+            wrap.className = 'doc-print';
 
-            var container = document.createElement('div');
-            container.id = 'pagesContainer';
-            container.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:0;padding:0;width:100%';
-            wrap.appendChild(container);
-            zone.appendChild(wrap);
+            if (page.header) {
+                var rh = document.createElement('div'); rh.className = 'doc-print-runhdr';
+                var hd = document.createElement('div'); hd.className = 'page-header-editor';
+                hd.innerHTML = page.header; rh.appendChild(hd); wrap.appendChild(rh);
+            }
+            if (page.footer) {
+                var rf = document.createElement('div'); rf.className = 'doc-print-runftr';
+                var fd = document.createElement('div'); fd.className = 'page-footer-editor';
+                fd.innerHTML = page.footer; rf.appendChild(fd); wrap.appendChild(rf);
+            }
 
-            (doc.pages || []).forEach(function (page) {
-                var pageEl = document.createElement('div');
-                pageEl.className = 'doc-page' + (parseInt(doc.is_split) ? ' split-mode' : '');
+            var table = document.createElement('table');
+            table.className = 'doc-print-table' + (split ? ' split-mode' : '');
 
-                // Header
-                var headerEl = document.createElement('div');
-                headerEl.className = 'doc-page-header';
-                var headerEditor = document.createElement('div');
-                headerEditor.className = 'page-header-editor';
-                headerEditor.innerHTML = page.header || '';
-                headerEl.appendChild(headerEditor);
-                pageEl.appendChild(headerEl);
+            if (page.header) {
+                var thead = document.createElement('thead');
+                var htr = document.createElement('tr');
+                var htd = document.createElement('td'); htd.colSpan = cols;
+                var hsp = document.createElement('div'); hsp.className = 'doc-print-spacer doc-print-spacer-h';
+                htd.appendChild(hsp); htr.appendChild(htd); thead.appendChild(htr);
+                table.appendChild(thead);
+            }
+            if (page.footer) {
+                var tfoot = document.createElement('tfoot');
+                var ftr = document.createElement('tr');
+                var ftd = document.createElement('td'); ftd.colSpan = cols;
+                var fsp = document.createElement('div'); fsp.className = 'doc-print-spacer doc-print-spacer-f';
+                ftd.appendChild(fsp); ftr.appendChild(ftd); tfoot.appendChild(ftr);
+                table.appendChild(tfoot);
+            }
 
-                // Body
-                var bodyEl = document.createElement('div');
-                bodyEl.className = 'doc-page-body';
-
-                if (parseInt(doc.is_split)) {
-                    var splitDiv = document.createElement('div');
-                    splitDiv.className = 'doc-editor-split';
-
-                    var leftCol = document.createElement('div');
-                    leftCol.className = 'doc-col';
-                    var leftQ = document.createElement('div');
-                    leftCol.appendChild(leftQ);
-                    splitDiv.appendChild(leftCol);
-
-                    var rightCol = document.createElement('div');
-                    rightCol.className = 'doc-col';
-                    var rightQ = document.createElement('div');
-                    rightCol.appendChild(rightQ);
-                    splitDiv.appendChild(rightCol);
-
-                    bodyEl.appendChild(splitDiv);
-                    pageEl.appendChild(bodyEl);
-
-                    var qL = new Quill(leftQ,  { readOnly: true, theme: 'snow', modules: { toolbar: false } });
-                    var qR = new Quill(rightQ, { readOnly: true, theme: 'snow', modules: { toolbar: false } });
-                    if (page.left)  qL.setContents(applyVarsToDelta(page.left,  values), 'silent');
-                    if (page.right) qR.setContents(applyVarsToDelta(page.right, values), 'silent');
-                } else {
-                    var singleDiv = document.createElement('div');
-                    singleDiv.className = 'doc-editor-single';
-                    var singleQ = document.createElement('div');
-                    singleDiv.appendChild(singleQ);
-                    bodyEl.appendChild(singleDiv);
-                    pageEl.appendChild(bodyEl);
-
-                    var qS = new Quill(singleQ, { readOnly: true, theme: 'snow', modules: { toolbar: false } });
-                    if (page.single) qS.setContents(applyVarsToDelta(page.single, values), 'silent');
-                }
-
-                // Footer
-                var footerEl = document.createElement('div');
-                footerEl.className = 'doc-page-footer';
-                var footerEditor = document.createElement('div');
-                footerEditor.className = 'page-footer-editor';
-                footerEditor.innerHTML = page.footer || '';
-                footerEl.appendChild(footerEditor);
-                pageEl.appendChild(footerEl);
-
-                container.appendChild(pageEl);
-            });
+            var tbody = document.createElement('tbody');
+            var tr = document.createElement('tr');
+            if (split) {
+                var tdL = document.createElement('td'); tdL.className = 'doc-print-col';
+                var tdR = document.createElement('td'); tdR.className = 'doc-print-col';
+                var lq  = document.createElement('div'); tdL.appendChild(lq);
+                var rq  = document.createElement('div'); tdR.appendChild(rq);
+                tr.appendChild(tdL); tr.appendChild(tdR);
+                tbody.appendChild(tr); table.appendChild(tbody);
+                var qL = new Quill(lq, { readOnly: true, theme: 'snow', modules: { toolbar: false } });
+                var qR = new Quill(rq, { readOnly: true, theme: 'snow', modules: { toolbar: false } });
+                if (page.left)  qL.setContents(applyVarsToDelta(page.left,  values), 'silent');
+                if (page.right) qR.setContents(applyVarsToDelta(page.right, values), 'silent');
+            } else {
+                var td = document.createElement('td'); td.className = 'doc-print-cell';
+                var sq = document.createElement('div'); td.appendChild(sq);
+                tr.appendChild(td); tbody.appendChild(tr); table.appendChild(tbody);
+                var qS = new Quill(sq, { readOnly: true, theme: 'snow', modules: { toolbar: false } });
+                if (page.single) qS.setContents(applyVarsToDelta(page.single, values), 'silent');
+            }
+            wrap.appendChild(table);
+            return wrap;
         }
 
         /* ─────────────────────────────────────────────

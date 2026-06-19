@@ -86,6 +86,20 @@
         });
         return out;
     }
+    // Merge a document's pages[] into one continuous stream per column. New
+    // docs save a single page; legacy multi-page docs concatenate into one flow.
+    function mergePages(pages) {
+        var single = null, left = null, right = null, header = '', footer = '';
+        (pages || []).forEach(function (p) {
+            if (p.single) single = single ? { ops: single.ops.concat(p.single.ops) } : { ops: p.single.ops.slice() };
+            if (p.left)   left   = left   ? { ops: left.ops.concat(p.left.ops) }     : { ops: p.left.ops.slice() };
+            if (p.right)  right  = right  ? { ops: right.ops.concat(p.right.ops) }   : { ops: p.right.ops.slice() };
+            if (!header && p.header) header = p.header;
+            if (!footer && p.footer) footer = p.footer;
+        });
+        return { single: single, left: left, right: right, header: header, footer: footer };
+    }
+
     // Replace variable embeds with their (draft) value for printing.
     function applyVarsToDelta(delta, values) {
         if (!delta || !delta.ops) return delta;
@@ -254,17 +268,13 @@
 
     function readDocPages(block, doc) {
         var split = !!parseInt(doc.is_split);
-        var pages = [];
-        block.querySelectorAll('.doc-page').forEach(function (p) {
-            pages.push({
-                header: (p.querySelector('.page-header-editor') || {}).innerHTML || '',
-                footer: (p.querySelector('.page-footer-editor') || {}).innerHTML || '',
-                single: (!split && p._qSingle) ? p._qSingle.getContents() : null,
-                left:   (split && p._qLeft)   ? p._qLeft.getContents()   : null,
-                right:  (split && p._qRight)  ? p._qRight.getContents()  : null,
-            });
-        });
-        return pages;
+        return [{
+            header: block._headerEl ? block._headerEl.innerHTML : '',
+            footer: block._footerEl ? block._footerEl.innerHTML : '',
+            single: (!split && block._qSingle) ? block._qSingle.getContents() : null,
+            left:   (split && block._qLeft)    ? block._qLeft.getContents()   : null,
+            right:  (split && block._qRight)   ? block._qRight.getContents()  : null,
+        }];
     }
     function scheduleDocSave(doc, block) {
         doc.pages = readDocPages(block, doc);
@@ -296,22 +306,23 @@
     }
 
     /* ── build the editable preview ───────────────────────── */
-    function makeWsQuill(el, delta) {
-        var q = new window.Quill(el, { theme: 'snow', modules: { toolbar: false } });
+    // Allowed formats — keep pastes clean (same whitelist as the editor).
+    var ALLOWED_FORMATS = [
+        'bold', 'italic', 'underline', 'strike',
+        'list', 'indent', 'align',
+        'color', 'background', 'header',
+        'variable'
+    ];
+
+    function makeWsQuill(el, delta, block) {
+        var q = new window.Quill(el, { theme: 'snow', formats: ALLOWED_FORMATS, modules: { toolbar: false } });
         if (delta) q.setContents(delta, 'silent');
         q.on('text-change', function (d, o, source) {
             if (source !== 'user') return;
             applyChipsInEl(q.root);
-            var block = el.closest('.ws-doc-block');
             if (block && block._doc) scheduleDocSave(block._doc, block);
         });
         return q;
-    }
-    function syncHF(block, which, html) {
-        var sel = which === 'header' ? '.page-header-editor' : '.page-footer-editor';
-        block.querySelectorAll(sel).forEach(function (el) {
-            if (el.innerHTML !== html) el.innerHTML = html;
-        });
     }
     function buildPreview() {
         var host = document.getElementById('wsPreview');
@@ -340,34 +351,34 @@
                 '</div>';
             var pagesHost = block.querySelector('.ws-doc-pages');
 
-            (doc.pages || []).forEach(function (page) {
-                var pageEl = document.createElement('div');
-                pageEl.className = 'doc-page' + (split ? ' split-mode' : '');
-                pageEl.innerHTML =
-                    '<div class="doc-page-header"><div class="page-header-editor" contenteditable="true" spellcheck="false"></div></div>' +
-                    '<div class="doc-page-body">' +
-                        '<div class="doc-editor-single"><div class="q-single"></div></div>' +
-                        '<div class="doc-editor-split"><div class="doc-col"><div class="q-left"></div></div>' +
-                            '<div class="doc-col-divider"></div><div class="doc-col"><div class="q-right"></div></div></div>' +
-                    '</div>' +
-                    '<div class="doc-page-footer"><div class="page-footer-editor" contenteditable="true" spellcheck="false"></div></div>';
-                pagesHost.appendChild(pageEl);
+            var sheet = document.createElement('div');
+            sheet.className = 'doc-sheet' + (split ? ' split-mode' : '');
+            sheet.innerHTML =
+                '<div class="doc-page-header"><div class="page-header-editor" contenteditable="true" spellcheck="false" data-placeholder="Заглавие..."></div></div>' +
+                '<div class="doc-sheet-body">' +
+                    '<div class="doc-editor-single"><div class="q-single"></div></div>' +
+                    '<div class="doc-editor-split"><div class="doc-col"><div class="q-left"></div></div>' +
+                        '<div class="doc-col-divider"></div><div class="doc-col"><div class="q-right"></div></div></div>' +
+                '</div>' +
+                '<div class="doc-page-footer"><div class="page-footer-editor" contenteditable="true" spellcheck="false" data-placeholder="Подножје..."></div></div>';
+            pagesHost.appendChild(sheet);
 
-                var h = pageEl.querySelector('.page-header-editor');
-                var f = pageEl.querySelector('.page-footer-editor');
-                h.innerHTML = page.header || '';
-                f.innerHTML = page.footer || '';
+            var page = mergePages(doc.pages);
+            var hEl = sheet.querySelector('.page-header-editor');
+            var fEl = sheet.querySelector('.page-footer-editor');
+            hEl.innerHTML = page.header || '';
+            fEl.innerHTML = page.footer || '';
+            block._headerEl = hEl;
+            block._footerEl = fEl;
+            hEl.addEventListener('input', function () { scheduleDocSave(doc, block); });
+            fEl.addEventListener('input', function () { scheduleDocSave(doc, block); });
 
-                if (split) {
-                    pageEl._qLeft  = makeWsQuill(pageEl.querySelector('.q-left'),  page.left);
-                    pageEl._qRight = makeWsQuill(pageEl.querySelector('.q-right'), page.right);
-                } else {
-                    pageEl._qSingle = makeWsQuill(pageEl.querySelector('.q-single'), page.single);
-                }
-
-                h.addEventListener('input', function () { syncHF(block, 'header', h.innerHTML); scheduleDocSave(doc, block); });
-                f.addEventListener('input', function () { syncHF(block, 'footer', f.innerHTML); scheduleDocSave(doc, block); });
-            });
+            if (split) {
+                block._qLeft  = makeWsQuill(sheet.querySelector('.q-left'),  page.left,  block);
+                block._qRight = makeWsQuill(sheet.querySelector('.q-right'), page.right, block);
+            } else {
+                block._qSingle = makeWsQuill(sheet.querySelector('.q-single'), page.single, block);
+            }
 
             block._doc = doc;
             host.appendChild(block);
@@ -399,59 +410,71 @@
     function buildPrintZone(doc, values) {
         var zone = document.getElementById('printZone');
         zone.innerHTML = '';
+        zone.appendChild(buildPrintTable(mergePages(doc.pages), !!parseInt(doc.is_split), values));
+    }
+
+    // The header/footer are pinned to the top/bottom of EVERY printed page via
+    // position:fixed (they repeat per page). The table's <thead>/<tfoot> hold
+    // empty spacers of the same height so the flowing <tbody> never runs under
+    // them. <tbody> breaks across A4 pages.
+    function buildPrintTable(page, split, values) {
+        var cols = split ? 2 : 1;
         var wrap = document.createElement('div');
-        wrap.className = 'doc-page-wrap';
-        var container = document.createElement('div');
-        container.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:0;padding:0;width:100%';
-        wrap.appendChild(container);
-        zone.appendChild(wrap);
+        wrap.className = 'doc-print';
 
-        (doc.pages || []).forEach(function (page) {
-            var pageEl = document.createElement('div');
-            pageEl.className = 'doc-page' + (parseInt(doc.is_split) ? ' split-mode' : '');
+        if (page.header) {
+            var rh = document.createElement('div'); rh.className = 'doc-print-runhdr';
+            var hd = document.createElement('div'); hd.className = 'page-header-editor';
+            hd.innerHTML = page.header; rh.appendChild(hd); wrap.appendChild(rh);
+        }
+        if (page.footer) {
+            var rf = document.createElement('div'); rf.className = 'doc-print-runftr';
+            var fd = document.createElement('div'); fd.className = 'page-footer-editor';
+            fd.innerHTML = page.footer; rf.appendChild(fd); wrap.appendChild(rf);
+        }
 
-            var headerEl = document.createElement('div');
-            headerEl.className = 'doc-page-header';
-            var he = document.createElement('div');
-            he.className = 'page-header-editor';
-            he.innerHTML = page.header || '';
-            headerEl.appendChild(he);
-            pageEl.appendChild(headerEl);
+        var table = document.createElement('table');
+        table.className = 'doc-print-table' + (split ? ' split-mode' : '');
 
-            var bodyEl = document.createElement('div');
-            bodyEl.className = 'doc-page-body';
+        if (page.header) {
+            var thead = document.createElement('thead');
+            var htr = document.createElement('tr');
+            var htd = document.createElement('td'); htd.colSpan = cols;
+            var hsp = document.createElement('div'); hsp.className = 'doc-print-spacer doc-print-spacer-h';
+            htd.appendChild(hsp); htr.appendChild(htd); thead.appendChild(htr);
+            table.appendChild(thead);
+        }
+        if (page.footer) {
+            var tfoot = document.createElement('tfoot');
+            var ftr = document.createElement('tr');
+            var ftd = document.createElement('td'); ftd.colSpan = cols;
+            var fsp = document.createElement('div'); fsp.className = 'doc-print-spacer doc-print-spacer-f';
+            ftd.appendChild(fsp); ftr.appendChild(ftd); tfoot.appendChild(ftr);
+            table.appendChild(tfoot);
+        }
 
-            if (parseInt(doc.is_split)) {
-                var splitDiv = document.createElement('div');
-                splitDiv.className = 'doc-editor-split';
-                var lc = document.createElement('div'); lc.className = 'doc-col';
-                var lq = document.createElement('div'); lc.appendChild(lq); splitDiv.appendChild(lc);
-                var rc = document.createElement('div'); rc.className = 'doc-col';
-                var rq = document.createElement('div'); rc.appendChild(rq); splitDiv.appendChild(rc);
-                bodyEl.appendChild(splitDiv); pageEl.appendChild(bodyEl);
-                var qL = new window.Quill(lq, { readOnly: true, theme: 'snow', modules: { toolbar: false } });
-                var qR = new window.Quill(rq, { readOnly: true, theme: 'snow', modules: { toolbar: false } });
-                if (page.left)  qL.setContents(applyVarsToDelta(page.left,  values), 'silent');
-                if (page.right) qR.setContents(applyVarsToDelta(page.right, values), 'silent');
-            } else {
-                var singleDiv = document.createElement('div');
-                singleDiv.className = 'doc-editor-single';
-                var sq = document.createElement('div'); singleDiv.appendChild(sq);
-                bodyEl.appendChild(singleDiv); pageEl.appendChild(bodyEl);
-                var qS = new window.Quill(sq, { readOnly: true, theme: 'snow', modules: { toolbar: false } });
-                if (page.single) qS.setContents(applyVarsToDelta(page.single, values), 'silent');
-            }
-
-            var footerEl = document.createElement('div');
-            footerEl.className = 'doc-page-footer';
-            var fe = document.createElement('div');
-            fe.className = 'page-footer-editor';
-            fe.innerHTML = page.footer || '';
-            footerEl.appendChild(fe);
-            pageEl.appendChild(footerEl);
-
-            container.appendChild(pageEl);
-        });
+        var tbody = document.createElement('tbody');
+        var tr = document.createElement('tr');
+        if (split) {
+            var tdL = document.createElement('td'); tdL.className = 'doc-print-col';
+            var tdR = document.createElement('td'); tdR.className = 'doc-print-col';
+            var lq  = document.createElement('div'); tdL.appendChild(lq);
+            var rq  = document.createElement('div'); tdR.appendChild(rq);
+            tr.appendChild(tdL); tr.appendChild(tdR);
+            tbody.appendChild(tr); table.appendChild(tbody);
+            var qL = new window.Quill(lq, { readOnly: true, theme: 'snow', modules: { toolbar: false } });
+            var qR = new window.Quill(rq, { readOnly: true, theme: 'snow', modules: { toolbar: false } });
+            if (page.left)  qL.setContents(applyVarsToDelta(page.left,  values), 'silent');
+            if (page.right) qR.setContents(applyVarsToDelta(page.right, values), 'silent');
+        } else {
+            var td = document.createElement('td'); td.className = 'doc-print-cell';
+            var sq = document.createElement('div'); td.appendChild(sq);
+            tr.appendChild(td); tbody.appendChild(tr); table.appendChild(tbody);
+            var qS = new window.Quill(sq, { readOnly: true, theme: 'snow', modules: { toolbar: false } });
+            if (page.single) qS.setContents(applyVarsToDelta(page.single, values), 'silent');
+        }
+        wrap.appendChild(table);
+        return wrap;
     }
     function printDoc(doc, values) {
         buildPrintZone(doc, values);
