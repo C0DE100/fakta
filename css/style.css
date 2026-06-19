@@ -2069,6 +2069,45 @@ body.modal-open {
 }
 [data-theme="dark"] .doc-page-counter { color: #6b6b75; }
 
+/* ── Real page-break line ───────────────────────────────────
+   A clear line marking where the BROWSER will actually start a new printed page,
+   so the user knows where the real pages end. Purely informational: a
+   pointer-events:none overlay that never moves or covers the text. */
+.doc-page-guides {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 4;
+}
+.doc-page-break {
+    position: absolute;
+    left: -3cm;                 /* span the full sheet width (into both margins) */
+    right: -3cm;
+    border-top: 2px dashed #9aa0a6;
+}
+.doc-page-break-num {
+    position: absolute;
+    top: 0;
+    right: 0.6cm;               /* sits in the right margin — never over text */
+    transform: translateY(-50%);
+    background: #ffffff;
+    border: 1px solid #e7e0d7;
+    color: #8a8f98;
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 1px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+[data-theme="dark"] .doc-page-break { border-top-color: #5a5a64; }
+[data-theme="dark"] .doc-page-break-num {
+    background: #2b2b31;
+    border-color: #3c3c44;
+    color: #9898a6;
+}
+
 /* Offscreen page used only to measure save-time pagination */
 .doc-measure-host {
     position: absolute;

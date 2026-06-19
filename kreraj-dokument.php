@@ -179,6 +179,10 @@ foreach ($templateVarMap as $name => $docNames) {
                             <div class="doc-col-divider"></div>
                             <div class="doc-col"><div class="q-right"></div></div>
                         </div>
+                        <!-- Page-break guides: a non-interactive overlay drawn at
+                             each A4 boundary. Purely visual — never touches the
+                             editor content, caret or scroll. -->
+                        <div class="doc-page-guides" id="docPageGuides" aria-hidden="true"></div>
                     </div>
                     <div class="doc-page-footer">
                         <div class="page-footer-editor" id="docFooterEditor"
@@ -189,6 +193,8 @@ foreach ($templateVarMap as $name => $docNames) {
                 </div>
 
             </div>
+
+            <div id="docPageCounter" class="doc-page-counter" aria-hidden="true"></div>
         </div>
 
     </div>
@@ -528,7 +534,9 @@ foreach ($templateVarMap as $name => $docNames) {
                     }
                 }
                 // No pagination — the editor just grows. We only refresh the
-                // resumable draft. Programmatic ('silent') loads must not draft.
+                // resumable draft and the (visual) page guides. Programmatic
+                // ('silent') loads update guides but must not create a draft.
+                scheduleGuides();
                 if (source !== 'silent') scheduleSnapshot();
             });
             return q;
@@ -547,6 +555,115 @@ foreach ($templateVarMap as $name => $docNames) {
         qRight  = makeQuill(sheetBody.querySelector('.q-right'), 'Десен текст...', false);
         quillMain   = qSingle;
         activeQuill = qSingle;
+
+        /* ─────────────────────────────────────────────
+           Real page-break lines (purely informational)
+           ─────────────────────────────────────────────
+           Draws a line in the editor exactly where the BROWSER will start a new
+           printed page, so the user knows where the real pages end. It does NOT
+           reflow or move the text — it only writes to a pointer-events:none
+           overlay, so paste/typing/caret/scroll/print are untouched.
+
+           The break interval = the printable content height of one A4 page:
+           29.7cm − 2·1cm (page margins) − the repeating header/footer bands
+           (1.5cm each, only when a header/footer exists). This matches the print
+           layout built in pregled-shablon.php / js/draft-workspace.js.
+        ───────────────────────────────────────────── */
+        var guidesEl  = document.getElementById('docPageGuides');
+        var counterEl = document.getElementById('docPageCounter');
+
+        var _cmPx = 0;
+        function cmPx() {
+            if (_cmPx) return _cmPx;
+            var p = document.createElement('div');
+            p.style.cssText = 'position:absolute;visibility:hidden;height:10cm;';
+            document.body.appendChild(p);
+            _cmPx = (p.offsetHeight || 378) / 10;
+            p.remove();
+            return _cmPx;
+        }
+        function pageBudgetPx() {
+            var cm = cmPx();
+            var hasHeader = headerEl && headerEl.textContent.trim() !== '';
+            var hasFooter = footerEl && footerEl.textContent.trim() !== '';
+            var budgetCm = 27.7 - (hasHeader ? 1.5 : 0) - (hasFooter ? 1.5 : 0);
+            return Math.round(budgetCm * cm);
+        }
+
+        // Collect the Y position of every rendered LINE box (relative to the
+        // editor top). getClientRects() per BLOCK returns one rect per line of
+        // that block (across blocks it would return whole-block rects, which is
+        // wrong — hence we measure block by block). Empty blocks (e.g. a blank
+        // line) fall back to their own box.
+        function collectLines(root) {
+            var rootTop = root.getBoundingClientRect().top;
+            var lines = [], blocks = root.children;
+            for (var b = 0; b < blocks.length; b++) {
+                var rng = document.createRange();
+                rng.selectNodeContents(blocks[b]);
+                var rects = rng.getClientRects();
+                if (rects.length) {
+                    for (var j = 0; j < rects.length; j++) {
+                        if (rects[j].height < 1) continue;
+                        lines.push({ top: rects[j].top - rootTop, bottom: rects[j].bottom - rootTop });
+                    }
+                } else {
+                    var br = blocks[b].getBoundingClientRect();
+                    lines.push({ top: br.top - rootTop, bottom: br.bottom - rootTop });
+                }
+            }
+            return lines;
+        }
+
+        // Page-break Y positions the way the browser paginates: break BEFORE the
+        // first line that would overflow the page (a text line is never split).
+        // The line is drawn in the gap between the last fitting line and the one
+        // that moves to the next page, so it never sits on top of text.
+        function computeBreaks(root, budget) {
+            var lines = collectLines(root);
+            var breaks = [], limit = budget, prevBottom = 0;
+            for (var i = 0; i < lines.length; i++) {
+                if (lines[i].bottom > limit + 1) {     // this line doesn't fit → new page
+                    var y = (lines[i].top > prevBottom) ? (prevBottom + lines[i].top) / 2 : lines[i].top;
+                    breaks.push(y);
+                    limit = lines[i].top + budget;
+                }
+                prevBottom = lines[i].bottom;
+            }
+            return breaks;
+        }
+
+        function drawPageBreaks() {
+            if (!guidesEl) return;
+            // Defensively clear any leftover background from earlier builds.
+            if (sheetBody.style.backgroundImage) sheetBody.style.backgroundImage = '';
+            var budget = pageBudgetPx();
+            var breaks;
+            if (splitActive) {
+                // The printed table row breaks both columns at the same page
+                // boundary; use whichever column runs longer to place the line.
+                var lb = computeBreaks(qLeft.root, budget);
+                var rb = computeBreaks(qRight.root, budget);
+                breaks = lb.length >= rb.length ? lb : rb;
+            } else {
+                breaks = computeBreaks(qSingle.root, budget);
+            }
+            var html = '';
+            for (var i = 0; i < breaks.length; i++) {
+                html += '<div class="doc-page-break" style="top:' + Math.round(breaks[i]) + 'px">' +
+                            '<span class="doc-page-break-num">Крај на страница ' + (i + 1) + '</span>' +
+                        '</div>';
+            }
+            guidesEl.innerHTML = html;
+            var pages = breaks.length + 1;
+            if (counterEl) counterEl.textContent = pages + ' ' + (pages === 1 ? 'страница' : 'страници');
+        }
+
+        var _guideTimer = null;
+        function scheduleGuides() {
+            clearTimeout(_guideTimer);
+            _guideTimer = setTimeout(drawPageBreaks, 150);
+        }
 
         /* ─────────────────────────────────────────────
            Save / load shape
@@ -699,6 +816,7 @@ foreach ($templateVarMap as $name => $docNames) {
                 activeQuill = qSingle;
                 setTimeout(function () { qSingle.focus(); }, 60);
             }
+            scheduleGuides();
             scheduleSnapshot();
         });
 
@@ -847,9 +965,18 @@ foreach ($templateVarMap as $name => $docNames) {
             loadState(EDIT_DOC);
         }
 
+        // Draw the page-break lines on load. A second pass after layout settles
+        // keeps them accurate once fonts/metrics are final.
+        drawPageBreaks();
+        setTimeout(drawPageBreaks, 200);
+        window.addEventListener('resize', scheduleGuides);
+
         // Auto-snapshot on any edit (typing, title changes), and flush the
-        // latest state when leaving so nothing typed is lost.
+        // latest state when leaving so nothing typed is lost. Also refresh the
+        // page-break lines (e.g. when a header/footer is added, the per-page
+        // content height changes).
         document.addEventListener('input', scheduleSnapshot);
+        document.addEventListener('input', scheduleGuides);
         window.addEventListener('beforeunload', snapshotDraft);
 
         // Signature of the state the document opened with. snapshotDraft() compares
