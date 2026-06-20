@@ -186,13 +186,13 @@
             '<div class="ws-bar">' +
                 '<div class="ws-bar-left">' +
                     '<span class="ws-mode-badge" id="wsModeBadge"></span>' +
-                    '<span class="ws-title" id="wsTitle">Користи шаблон</span>' +
+                    '<span class="ws-title" id="wsTitle">Преземи шаблон</span>' +
                     '<span class="ws-saved" id="wsSaved"></span>' +
                 '</div>' +
                 '<div class="ws-bar-actions">' +
                     '<button id="wsDownload" class="btn-new-client">' +
                         '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
-                        'Преземи PDF' +
+                        'Преземи' +
                     '</button>' +
                     '<button id="wsMinimize" class="ws-winbtn" title="Сокриј (нацрт)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 18h14"/></svg></button>' +
                     '<button id="wsExpand" class="ws-winbtn" title="Зголеми"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>' +
@@ -232,6 +232,7 @@
             state.values[name] = inp.value;
             saveVals();
             applyValueToChips(name);
+            applyImportedValues();     // also live-fill imported .docx previews
             scheduleBreaks();          // chip text changed → line wrapping may shift
         });
 
@@ -249,7 +250,7 @@
         if (el) {
             el.textContent = state.docId
                 ? 'Преземи: ' + (state.docName || state.name)
-                : 'Користи шаблон: ' + state.name;
+                : 'Преземи шаблон: ' + state.name;
         }
         var badge = document.getElementById('wsModeBadge');
         if (badge) {
@@ -423,67 +424,183 @@
         });
         return q;
     }
+    /* ── imported .docx live preview (docx-preview, lazy-loaded) ──────────── */
+    var dpLoading = false, dpQueue = [];
+    function loadScriptOnce(src, cb) {
+        var s = document.createElement('script');
+        s.src = src;
+        s.onload = function () { cb(); };
+        s.onerror = function () { cb(new Error('load ' + src)); };
+        document.head.appendChild(s);
+    }
+    function ensureDocxPreview(cb) {
+        if (window.docx && window.JSZip) { cb(); return; }
+        dpQueue.push(cb);
+        if (dpLoading) return;
+        dpLoading = true;
+        var done = function (err) { dpLoading = false; var q = dpQueue; dpQueue = []; q.forEach(function (f) { f(err); }); };
+        var loadDocx = function (err) {
+            if (err) { done(err); return; }
+            if (window.docx) { done(); return; }
+            loadScriptOnce('https://cdn.jsdelivr.net/npm/docx-preview@0.3.5/dist/docx-preview.min.js', done);
+        };
+        if (window.JSZip) loadDocx();
+        else loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', loadDocx);
+    }
+    // Wrap each [placeholder] in a rendered docx with a highlight span.
+    function wrapImportedPlaceholders(root) {
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+        var nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        nodes.forEach(function (node) {
+            var text = node.nodeValue;
+            if (!text || text.indexOf('[') === -1) return;
+            var re = /\[([^\[\]]{1,200})\]/g;
+            if (!re.test(text)) return;
+            re.lastIndex = 0;
+            var frag = document.createDocumentFragment(), last = 0, m;
+            while ((m = re.exec(text))) {
+                if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+                var span = document.createElement('span');
+                span.className = 'ph-mark';
+                span.setAttribute('data-ph', m[1].trim());
+                span.textContent = '[' + m[1] + ']';
+                frag.appendChild(span);
+                last = m.index + m[0].length;
+            }
+            if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+            node.parentNode.replaceChild(frag, node);
+        });
+    }
+    function renderImportedPreview(doc, el) {
+        ensureDocxPreview(function (err) {
+            if (err) { el.innerHTML = '<p class="ws-imported-msg">Прегледот не е достапен. Сепак можеш да го пополниш и преземеш документот.</p>'; return; }
+            fetch('api/document_api.php?action=master&id=' + encodeURIComponent(doc.id))
+                .then(function (r) { if (!r.ok) throw new Error('fetch'); return r.blob(); })
+                .then(function (blob) {
+                    el.innerHTML = '';
+                    return window.docx.renderAsync(blob, el, null, { inWrapper: true, ignoreLastRenderedPageBreak: true, experimental: true });
+                })
+                .then(function () { wrapImportedPlaceholders(el); applyImportedValues(); })
+                .catch(function () { el.innerHTML = '<p class="ws-imported-msg">Прегледот не може да се вчита.</p>'; });
+        });
+    }
+    // Update the highlighted placeholders in every imported preview from state.values.
+    function applyImportedValues() {
+        (state._importedRoots || []).forEach(function (entry) {
+            entry.el.querySelectorAll('.ph-mark').forEach(function (mark) {
+                var name = mark.getAttribute('data-ph');
+                var val = state.values[name];
+                if (val !== undefined && val !== '') { mark.textContent = val; mark.classList.add('ph-filled'); }
+                else { mark.textContent = '[' + name + ']'; mark.classList.remove('ph-filled'); }
+            });
+        });
+    }
+
+    // One editor (Quill) document block.
+    function buildEditorBlock(doc, idx, total) {
+        var split = !!parseInt(doc.is_split);
+        var block = document.createElement('div');
+        block.className = 'ws-doc-block';
+        block.innerHTML =
+            '<div class="ws-doc-spine">' +
+                '<span class="ws-doc-num" title="Документ ' + (idx + 1) + ' од ' + total + '">' + (idx + 1) + '</span>' +
+                '<span class="ws-doc-rail"></span>' +
+            '</div>' +
+            '<div class="ws-doc-content">' +
+                '<div class="ws-doc-head">' +
+                    '<div class="ws-doc-head-left">' +
+                        '<svg class="ws-doc-ico" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+                        '<span class="ws-doc-name">' + esc(doc.name) + '</span>' +
+                    '</div>' +
+                    '<a class="btn-secondary ws-doc-edit" style="font-size:0.75rem;padding:0.3rem 0.6rem" ' +
+                       'href="kreraj-dokument.php?doc_id=' + doc.id + '&template_id=' + state.id + '">Отвори во уредувач</a>' +
+                '</div>' +
+                '<div class="ws-doc-pages"></div>' +
+            '</div>';
+        var pagesHost = block.querySelector('.ws-doc-pages');
+
+        var sheet = document.createElement('div');
+        sheet.className = 'doc-sheet' + (split ? ' split-mode' : '');
+        sheet.innerHTML =
+            '<div class="doc-page-header"><div class="page-header-editor" contenteditable="true" spellcheck="false" data-placeholder="Заглавие..."></div></div>' +
+            '<div class="doc-sheet-body">' +
+                '<div class="doc-editor-single"><div class="q-single"></div></div>' +
+                '<div class="doc-editor-split"><div class="doc-col"><div class="q-left"></div></div>' +
+                    '<div class="doc-col-divider"></div><div class="doc-col"><div class="q-right"></div></div></div>' +
+                '<div class="doc-page-guides"></div>' +
+            '</div>' +
+            '<div class="doc-page-footer"><div class="page-footer-editor" contenteditable="true" spellcheck="false" data-placeholder="Подножје..."></div></div>';
+        pagesHost.appendChild(sheet);
+
+        var page = mergePages(doc.pages);
+        var hEl = sheet.querySelector('.page-header-editor');
+        var fEl = sheet.querySelector('.page-footer-editor');
+        hEl.innerHTML = page.header || '';
+        fEl.innerHTML = page.footer || '';
+        block._headerEl = hEl;
+        block._footerEl = fEl;
+        block._guidesEl = sheet.querySelector('.doc-page-guides');
+        hEl.addEventListener('input', function () { scheduleDocSave(doc, block); scheduleBreaks(); });
+        fEl.addEventListener('input', function () { scheduleDocSave(doc, block); scheduleBreaks(); });
+
+        if (split) {
+            block._qLeft  = makeWsQuill(sheet.querySelector('.q-left'),  page.left,  block);
+            block._qRight = makeWsQuill(sheet.querySelector('.q-right'), page.right, block);
+        } else {
+            block._qSingle = makeWsQuill(sheet.querySelector('.q-single'), page.single, block);
+        }
+        block._doc = doc;
+        return block;
+    }
+
+    // One imported (.docx) document block: a live docx-preview + its own
+    // "Преземи .docx" button. NOT auto-downloaded — preview first, download on click.
+    function buildImportedBlock(doc, idx, total) {
+        var block = document.createElement('div');
+        block.className = 'ws-doc-block ws-imported-block';
+        block.innerHTML =
+            '<div class="ws-doc-spine">' +
+                '<span class="ws-doc-num" title="Документ ' + (idx + 1) + ' од ' + total + '">' + (idx + 1) + '</span>' +
+                '<span class="ws-doc-rail"></span>' +
+            '</div>' +
+            '<div class="ws-doc-content">' +
+                '<div class="ws-doc-head">' +
+                    '<div class="ws-doc-head-left">' +
+                        '<svg class="ws-doc-ico" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+                        '<span class="ws-doc-name">' + esc(doc.name) + '</span>' +
+                        '<span class="doc-format-badge" data-ext="docx" style="margin-left:.5rem">docx</span>' +
+                    '</div>' +
+                    '<button type="button" class="btn-new-client ws-imported-dl" style="font-size:0.75rem;padding:0.35rem 0.7rem">' +
+                        '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
+                        'Преземи .docx' +
+                    '</button>' +
+                '</div>' +
+                '<div class="ws-imported-preview"><p class="ws-imported-msg">Се вчитува преглед…</p></div>' +
+            '</div>';
+        block.querySelector('.ws-imported-dl').addEventListener('click', function () {
+            flushSaves();
+            downloadImportedFilled(doc, state.values);
+        });
+        var previewEl = block.querySelector('.ws-imported-preview');
+        renderImportedPreview(doc, previewEl);
+        state._importedRoots.push({ doc: doc, el: previewEl });
+        return block;
+    }
+
     function buildPreview() {
         var host = document.getElementById('wsPreview');
         host.innerHTML = '';
-        var docs = state.docs || [];
-        var total = docs.length;
-        docs.forEach(function (doc, idx) {
-            var split = !!parseInt(doc.is_split);
-            var block = document.createElement('div');
-            block.className = 'ws-doc-block';
-            block.innerHTML =
-                '<div class="ws-doc-spine">' +
-                    '<span class="ws-doc-num" title="Документ ' + (idx + 1) + ' од ' + total + '">' + (idx + 1) + '</span>' +
-                    '<span class="ws-doc-rail"></span>' +
-                '</div>' +
-                '<div class="ws-doc-content">' +
-                    '<div class="ws-doc-head">' +
-                        '<div class="ws-doc-head-left">' +
-                            '<svg class="ws-doc-ico" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
-                            '<span class="ws-doc-name">' + esc(doc.name) + '</span>' +
-                        '</div>' +
-                        '<a class="btn-secondary ws-doc-edit" style="font-size:0.75rem;padding:0.3rem 0.6rem" ' +
-                           'href="kreraj-dokument.php?doc_id=' + doc.id + '&template_id=' + state.id + '">Отвори во уредувач</a>' +
-                    '</div>' +
-                    '<div class="ws-doc-pages"></div>' +
-                '</div>';
-            var pagesHost = block.querySelector('.ws-doc-pages');
-
-            var sheet = document.createElement('div');
-            sheet.className = 'doc-sheet' + (split ? ' split-mode' : '');
-            sheet.innerHTML =
-                '<div class="doc-page-header"><div class="page-header-editor" contenteditable="true" spellcheck="false" data-placeholder="Заглавие..."></div></div>' +
-                '<div class="doc-sheet-body">' +
-                    '<div class="doc-editor-single"><div class="q-single"></div></div>' +
-                    '<div class="doc-editor-split"><div class="doc-col"><div class="q-left"></div></div>' +
-                        '<div class="doc-col-divider"></div><div class="doc-col"><div class="q-right"></div></div></div>' +
-                    '<div class="doc-page-guides"></div>' +
-                '</div>' +
-                '<div class="doc-page-footer"><div class="page-footer-editor" contenteditable="true" spellcheck="false" data-placeholder="Подножје..."></div></div>';
-            pagesHost.appendChild(sheet);
-
-            var page = mergePages(doc.pages);
-            var hEl = sheet.querySelector('.page-header-editor');
-            var fEl = sheet.querySelector('.page-footer-editor');
-            hEl.innerHTML = page.header || '';
-            fEl.innerHTML = page.footer || '';
-            block._headerEl = hEl;
-            block._footerEl = fEl;
-            block._guidesEl = sheet.querySelector('.doc-page-guides');
-            hEl.addEventListener('input', function () { scheduleDocSave(doc, block); scheduleBreaks(); });
-            fEl.addEventListener('input', function () { scheduleDocSave(doc, block); scheduleBreaks(); });
-
-            if (split) {
-                block._qLeft  = makeWsQuill(sheet.querySelector('.q-left'),  page.left,  block);
-                block._qRight = makeWsQuill(sheet.querySelector('.q-right'), page.right, block);
-            } else {
-                block._qSingle = makeWsQuill(sheet.querySelector('.q-single'), page.single, block);
-            }
-
-            block._doc = doc;
-            host.appendChild(block);
+        state._importedRoots = [];
+        var ordered = state.orderedDocs || [];
+        var total = ordered.length;
+        // Render in original document order — editor and imported interleaved.
+        ordered.forEach(function (doc, idx) {
+            host.appendChild(doc.kind === 'imported'
+                ? buildImportedBlock(doc, idx, total)
+                : buildEditorBlock(doc, idx, total));
         });
+
         applyAllValues();
         // Draw the page-break lines once the sheets have laid out.
         redrawAllBreaks();
@@ -492,7 +609,7 @@
 
     function renderVarFields() {
         var host   = document.getElementById('wsVarFields');
-        var varMap = getVarsFromDocs(state.docs);
+        var varMap = getVarsFromDocs((state.docs || []).concat(state.importedDocs || []));
         var names  = Object.keys(varMap);
         if (!names.length) {
             host.innerHTML = '<p style="font-size:0.8125rem;color:#a8a29e">Овој шаблон нема променливи.</p>';
@@ -624,13 +741,16 @@
     // Narrow allDocs to the active view (one doc, or the whole template), seed
     // any missing variable values, then render.
     function applyDocFilterAndBuild() {
-        state.docs = (state.docId != null
+        var scope = state.docId != null
             ? (state.allDocs || []).filter(function (d) { return parseInt(d.id, 10) === parseInt(state.docId, 10); })
-            : (state.allDocs || []))
-            // Imported (uploaded-file) docs have no Quill preview — they're
-            // downloaded per-card from pregled-shablon.php, not in this workspace.
-            .filter(function (d) { return d.kind !== 'imported'; });
-        Object.keys(getVarsFromDocs(state.docs)).forEach(function (n) {
+            : (state.allDocs || []);
+        // Editor docs get the Quill preview + print-to-PDF; imported (.docx)
+        // docs have no preview — they're filled & downloaded as .docx instead.
+        state.orderedDocs  = scope;   // original document order (editor + imported)
+        state.docs         = scope.filter(function (d) { return d.kind !== 'imported'; });
+        state.importedDocs = scope.filter(function (d) { return d.kind === 'imported'; });
+        // Collect variable/placeholder names across BOTH so one value fills all.
+        Object.keys(getVarsFromDocs(state.docs.concat(state.importedDocs))).forEach(function (n) {
             if (state.values[n] === undefined) state.values[n] = '';
         });
         renderVarFields();
@@ -700,15 +820,59 @@
         setActiveDraft(null); // remove the floating pill everywhere
     }
     function download() {
-        if (!state.docs || !state.docs.length) return;
+        var ordered = state.orderedDocs || [];
+        if (!ordered.length) return;
         flushSaves();
-        printAllDocs(state.docs, state.values);
+        // Walk every doc in document order: editor → print to PDF (waits for the
+        // print dialog to close), imported → fill & download the .docx. Sequential
+        // so the order is respected and dialogs don't pile up.
+        var i = 0;
+        (function next() {
+            if (i >= ordered.length) return;
+            var doc = ordered[i++];
+            var step = doc.kind === 'imported'
+                ? downloadImportedFilled(doc, state.values)
+                : printDoc(doc, state.values);
+            Promise.resolve(step).then(next);
+        }());
+    }
+
+    // POST the entered values to the API, fill the .docx master, and trigger a
+    // browser download of the filled file.
+    function parseFilename(cd) {
+        if (!cd) return '';
+        var star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+        if (star) { try { return decodeURIComponent(star[1]); } catch (e) {} }
+        var plain = /filename="?([^";]+)"?/i.exec(cd);
+        return plain ? plain[1] : '';
+    }
+    function downloadImportedFilled(doc, values) {
+        var fd = new FormData();
+        fd.append('action', 'download_filled');
+        fd.append('id', doc.id);
+        fd.append('values', JSON.stringify(values || {}));
+        return fetch('api/document_api.php', { method: 'POST', body: fd })
+            .then(function (r) {
+                if (!r.ok) return r.json().then(function (j) { throw new Error(j.message || 'Грешка'); });
+                var cd = r.headers.get('Content-Disposition') || '';
+                return r.blob().then(function (b) { return { blob: b, name: parseFilename(cd) }; });
+            })
+            .then(function (o) {
+                var fname = o.name || (doc.name + '.docx');
+                var url = URL.createObjectURL(o.blob);
+                var a = document.createElement('a');
+                a.href = url; a.download = fname;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+            })
+            .catch(function (e) { markSaved(e.message || 'Грешка при преземање'); });
     }
     function clearValues() {
         Object.keys(state.values).forEach(function (k) { state.values[k] = ''; });
         saveVals();
         document.querySelectorAll('#wsVarFields .ws-var-input').forEach(function (inp) { inp.value = ''; });
         applyAllValues();
+        applyImportedValues();
     }
 
     /* ── restore the docked pill on every page load ───────── */

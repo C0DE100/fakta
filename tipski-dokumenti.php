@@ -409,9 +409,9 @@ $currentPage = 'tipski-dokumenti';
                     ? '<button type="button" class="btn-new-client tpl-card-use" data-use-tpl ' +
                           'data-id="' + tpl.id + '" data-name="' + escapeHtml(tpl.name).replace(/"/g, '&quot;') + '">' +
                           '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
-                              '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>' +
+                              '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>' +
                           '</svg>' +
-                          'Користи шаблон' +
+                          'Преземи шаблон' +
                       '</button>'
                     : '';
 

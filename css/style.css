@@ -4023,3 +4023,20 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .crumb-current #crumbFolderName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tpl-view-ico { width: 1.5rem; height: 1.5rem; color: #78716c; flex-shrink: 0; }
 [data-theme="dark"] .tpl-view-ico { color: #9898a6; }
+
+/* ── Imported (.docx) live preview inside the "Преземи шаблон" workspace ──── */
+/* docx-preview supplies its own .docx-wrapper / page styling; this is just a
+   scroll viewport. */
+.ws-imported-preview {
+    overflow: auto;
+    max-height: 75vh;
+    border: 1px solid #e7e5e4;
+    border-radius: 8px;
+    background: #f5f3f0;
+}
+.ws-imported-preview .docx-wrapper { background: #f5f3f0; padding: 1.25rem; }
+.ws-imported-preview .docx-wrapper > section.docx { box-shadow: 0 1px 6px rgba(0,0,0,.12); margin-bottom: 1.25rem; }
+.ws-imported-msg { color: #a8a29e; font-style: italic; padding: 1.25rem; }
+
+[data-theme="dark"] .ws-imported-preview { background: #18181b; border-color: #2c2c33; }
+[data-theme="dark"] .ws-imported-preview .docx-wrapper { background: #18181b; }
