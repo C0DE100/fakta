@@ -84,17 +84,17 @@ foreach ($templateVarMap as $name => $docNames) {
 
         <!-- Document header bar -->
         <div class="doc-header">
-            <a href="pregled-shablon.php?id=<?= $templateId ?>" class="btn-secondary">
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>
-                </svg>
-                Назад
-            </a>
             <input type="text" id="docTitleInput" class="doc-title-input" placeholder="Назив на документот...">
         </div>
 
         <!-- Quill toolbar (sticky) -->
         <div class="doc-toolbar-sticky">
+            <a href="pregled-shablon.php?id=<?= $templateId ?>" class="doc-toolbar-back" title="Назад кон шаблонот">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>
+                </svg>
+                <span>Назад</span>
+            </a>
             <div id="quill-toolbar">
                 <span class="ql-formats" data-group="Историја">
                     <button id="btnUndo" type="button" title="Врати (Ctrl+Z)">
@@ -200,14 +200,14 @@ foreach ($templateVarMap as $name => $docNames) {
     </div>
     </div>
 
-    <!-- Modal: enter variable name -->
-    <div id="varNameModal" class="modal-overlay">
+    <!-- Modal: enter variable name (non-blocking floating panel) -->
+    <div id="varNameModal" class="modal-overlay var-modal-floating">
         <div class="modal-box" style="max-width:22rem">
             <div class="modal-header">
                 <span class="modal-title">Внеси Променлива</span>
                 <button class="modal-close" id="varNameClose">&times;</button>
             </div>
-            <p style="font-size:0.8125rem;color:#78716c;margin-bottom:1rem;">Именувај ја променливата. При печатење ќе бидеш прашан за нејзината вредност.</p>
+            <p style="font-size:0.8125rem;color:#78716c;margin-bottom:1rem;">Именувај ја променливата. При печатење ќе бидеш прашан за нејзината вредност. Прозорецот останува отворен — кликни каде било во документот за да внесеш уште.</p>
             <p id="varReplaceNote" class="var-replace-note" style="display:none"></p>
             <input type="text" id="varNameInput" class="field" placeholder="пр. ime, datum, firma..." style="width:100%;margin-bottom:0.75rem;" autocomplete="off" spellcheck="false">
             <div id="varSuggestWrap" class="var-suggest-wrap" style="display:none">
@@ -281,7 +281,6 @@ foreach ($templateVarMap as $name => $docNames) {
         /* ─────────────────────────────────────────────
            Variable name modal
         ───────────────────────────────────────────── */
-        var varNameCb = null;
         var _varSuggestions = [];
 
         function escAttr(s) {
@@ -338,8 +337,7 @@ foreach ($templateVarMap as $name => $docNames) {
             }).join('');
         }
 
-        function openVarNameModal(cb, selectedText) {
-            varNameCb = cb;
+        function openVarNameModal(selectedText) {
             document.getElementById('varNameInput').value = '';
 
             // Show what the variable will replace, if text was selected.
@@ -355,26 +353,52 @@ foreach ($templateVarMap as $name => $docNames) {
 
             _varSuggestions = buildSuggestions();
             renderVarSuggestions();
+            // Floating panel: stays open without dimming/locking the page, so the
+            // user can keep reading the document and insert as many variables as
+            // they like — clicking elsewhere in the text just moves the target.
             document.getElementById('varNameModal').classList.add('open');
-            document.body.classList.add('modal-open');
             setTimeout(function () { document.getElementById('varNameInput').focus(); }, 50);
         }
 
         function closeVarNameModal() {
             document.getElementById('varNameModal').classList.remove('open');
-            document.body.classList.remove('modal-open');
-            varNameCb = null;
         }
 
-        // Sanitise a chosen name and hand it to the active callback. Returns
-        // false if the name was empty after cleanup. Spaces are allowed (e.g.
+        // Insert a variable at the caret/selection the user last had in an editor.
+        // We read q._sel (the remembered selection, which survives the editor
+        // losing focus to this panel) and advance it ourselves — without calling
+        // setSelection(), which would steal focus back from the panel and break
+        // continuous inserting. Returns false if there's no editor to target.
+        function insertVariableAt(name) {
+            var q = activeQuill || quillMain;
+            if (!q) return false;
+            var range = q.getSelection() || q._sel
+                     || { index: Math.max(q.getLength() - 1, 0), length: 0 };
+            var change = new Delta().retain(range.index);
+            if (range.length) change.delete(range.length);   // replace selection
+            change.insert({ variable: name });
+            preserveScroll(function () { q.updateContents(change, 'user'); });
+            // Remember the spot just after the inserted variable so a follow-up
+            // insert lands right after it if the caret isn't moved.
+            q._sel = { index: range.index + 1, length: 0 };
+            return true;
+        }
+
+        // Sanitise a chosen name, insert it at the current target, and KEEP the
+        // panel open so the user can place another one. Spaces are allowed (e.g.
         // "Ime na klient"); only the "$" delimiter is stripped.
         function chooseVariable(name) {
             name = (name || '').replace(/\$/g, '').replace(/\s+/g, ' ').trim();
             if (!name) return false;
-            var cb = varNameCb;
-            closeVarNameModal();
-            if (cb) cb(name);
+            if (!insertVariableAt(name)) return false;
+            // Reset for the next one: clear the field, drop the now-stale replace
+            // note, and refresh suggestions (the new variable now appears there).
+            var input = document.getElementById('varNameInput');
+            input.value = '';
+            document.getElementById('varReplaceNote').style.display = 'none';
+            _varSuggestions = buildSuggestions();
+            renderVarSuggestions();
+            input.focus();
             return true;
         }
 
@@ -401,27 +425,27 @@ foreach ($templateVarMap as $name => $docNames) {
             if (e.key === 'Escape') closeVarNameModal();
         });
 
+        // The panel is non-modal, so focus may sit in the document while it is
+        // open — catch Escape globally to close it from anywhere.
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' &&
+                document.getElementById('varNameModal').classList.contains('open')) {
+                closeVarNameModal();
+            }
+        });
+
         /* ─────────────────────────────────────────────
            Insert variable at cursor
         ───────────────────────────────────────────── */
         function insertVariable() {
-            var q = activeQuill;
+            var q = activeQuill || quillMain;
             if (!q) return;
+            // getSelection(true) focuses the editor and records the caret in _sel
+            // (via selection-change), so the panel knows where to insert.
             var range = q.getSelection(true) || { index: q.getLength() - 1, length: 0 };
-            // Text currently selected — it will be replaced by the variable.
+            // Text currently selected — it will be replaced by the first variable.
             var selectedText = range.length ? q.getText(range.index, range.length) : '';
-            openVarNameModal(function (name) {
-                // Delete the selection (if any) and drop the variable in its
-                // place as one atomic change (single undo step).
-                var change = new Delta().retain(range.index);
-                if (range.length) change.delete(range.length);
-                change.insert({ variable: name });
-                preserveScroll(function () {
-                    q.updateContents(change, 'user');
-                    q.setSelection(range.index + 1, 0, 'silent');
-                    q.focus();
-                });
-            }, selectedText);
+            openVarNameModal(selectedText);
         }
 
         // Preserve the editor selection when the button is pressed — without

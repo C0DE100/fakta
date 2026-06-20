@@ -1251,6 +1251,42 @@ body.modal-open {
     to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+/* Floating, non-blocking variant — used for "Внеси Променлива". The page is
+   not dimmed or locked: the backdrop lets clicks/scroll pass through to the
+   document, and the panel docks top-right just under the sticky toolbar so the
+   content stays readable while a variable is named. */
+.modal-overlay.var-modal-floating {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    pointer-events: none;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 0;
+}
+.modal-overlay.var-modal-floating .modal-box {
+    pointer-events: auto;
+    margin: 6.5rem 1.5rem 1rem 0;
+    max-height: calc(100vh - 7.5rem);
+    box-shadow: 0 10px 32px rgba(28, 25, 23, 0.16), 0 24px 64px rgba(28, 25, 23, 0.14);
+    border-color: #ddd6cc;
+}
+@media (max-width: 640px) {
+    .modal-overlay.var-modal-floating { justify-content: center; }
+    .modal-overlay.var-modal-floating .modal-box { margin: 6.5rem 1rem 1rem; }
+}
+/* Keep the floating variant see-through in dark mode too — the generic
+   [data-theme="dark"] .modal-overlay rule below otherwise re-dims the page. */
+[data-theme="dark"] .modal-overlay.var-modal-floating {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+[data-theme="dark"] .modal-overlay.var-modal-floating .modal-box {
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5), 0 24px 64px rgba(0, 0, 0, 0.45);
+    border-color: #3c3c44;
+}
+
 .modal-panel { display: none; }
 .modal-panel.active { display: block; }
 
@@ -1652,6 +1688,39 @@ body.modal-open {
     box-shadow: 0 1px 4px rgba(28, 25, 23, 0.05);
     display: flex;
     align-items: center;
+}
+
+/* Always-reachable Back button, docked at the far left of the sticky bar and
+   separated by a divider so it is never mistaken for the Undo button. */
+.doc-toolbar-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    align-self: stretch;
+    padding: 0 0.875rem;
+    border-right: 1px solid #e8e4de;
+    color: #57534e;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background-color 0.15s, color 0.15s;
+}
+.doc-toolbar-back:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+[data-theme="dark"] .doc-toolbar-back {
+    color: #9898a6;
+    border-right-color: #3c3c44;
+}
+[data-theme="dark"] .doc-toolbar-back:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+@media (max-width: 640px) {
+    .doc-toolbar-back span { display: none; }
+    .doc-toolbar-back { padding: 0 0.75rem; }
 }
 
 /* Override Quill Snow toolbar so it merges into our sticky bar */
