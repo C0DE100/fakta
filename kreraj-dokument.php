@@ -26,12 +26,14 @@ if (!$templateId) {
 }
 
 // The template must belong to the current company before we render its editor.
-$ownStmt = $pdo->prepare('SELECT 1 FROM templates WHERE id = ? AND company_id = ?');
+$ownStmt = $pdo->prepare('SELECT name FROM templates WHERE id = ? AND company_id = ?');
 $ownStmt->execute([$templateId, $companyId]);
-if (!$ownStmt->fetchColumn()) {
+$templateRow = $ownStmt->fetch();
+if (!$templateRow) {
     header('Location: tipski-dokumenti.php');
     exit;
 }
+$templateName = $templateRow['name'];
 
 // Praktikant may edit only documents they created (they may still create new
 // ones). Block opening the editor on someone else's document up front.
@@ -148,6 +150,21 @@ foreach ($templateVarMap as $name => $docNames) {
                     </svg>
                     Внеси Променлива
                 </button>
+                <?php if ($editDoc): ?>
+                <button id="btnDownloadDoc" class="btn-secondary" title="Преземи го овој документ како PDF">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" x2="12" y1="15" y2="3"/>
+                    </svg>
+                    Преземи
+                </button>
+                <button id="btnDeleteDoc" class="btn-secondary btn-tool-danger" title="Избриши документ">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                    </svg>
+                </button>
+                <?php endif; ?>
                 <button id="btnSave" class="btn-new-client" title="Зачувај документ">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -183,6 +200,10 @@ foreach ($templateVarMap as $name => $docNames) {
                              each A4 boundary. Purely visual — never touches the
                              editor content, caret or scroll. -->
                         <div class="doc-page-guides" id="docPageGuides" aria-hidden="true"></div>
+                        <!-- Persistent selection highlight: drawn while the
+                             "insert variable" panel is open, since the native
+                             highlight is lost once the panel takes focus. -->
+                        <div class="doc-sel-highlight" id="docSelHighlight" aria-hidden="true"></div>
                     </div>
                     <div class="doc-page-footer">
                         <div class="page-footer-editor" id="docFooterEditor"
@@ -221,12 +242,45 @@ foreach ($templateVarMap as $name => $docNames) {
         </div>
     </div>
 
+    <?php if ($editDoc): ?>
+    <!-- Modal: confirm delete of this document -->
+    <div id="docDeleteModal" class="modal-overlay" aria-hidden="true">
+        <div class="modal-box" style="max-width:22rem">
+            <div class="modal-header">
+                <span class="modal-title">Избриши документ</span>
+                <button class="modal-close" id="docDeleteClose">&times;</button>
+            </div>
+            <p style="font-size:0.875rem;color:#57534e;margin-bottom:1.25rem;">Дали сте сигурни дека сакате да го избришете овој документ? Ова не може да се врати.</p>
+            <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+                <button id="docDeleteCancel" class="btn-secondary">Откажи</button>
+                <button id="docDeleteConfirm" class="btn-new-client" style="background:#dc2626">Избриши</button>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- Modal: unsaved-changes warning when leaving the editor -->
+    <div id="leaveModal" class="modal-overlay" aria-hidden="true">
+        <div class="modal-box" style="max-width:23rem">
+            <div class="modal-header">
+                <span class="modal-title">Незачувани промени</span>
+                <button class="modal-close" id="leaveClose">&times;</button>
+            </div>
+            <p style="font-size:0.875rem;color:#57534e;margin-bottom:1.25rem;">Имаш промени што не се зачувани. Ако излезеш сега, тие ќе бидат изгубени.</p>
+            <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+                <button id="leaveStay" class="btn-secondary">Остани</button>
+                <button id="leaveDiscard" class="btn-new-client" style="background:#dc2626">Излези без зачувување</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.quilljs.com/1.3.7/quill.js"></script>
     <script src="js/app.js"></script>
     <script>
     var EDIT_DOC       = <?= $editDoc ? json_encode($editDoc) : 'null' ?>;
     var TEMPLATE_ID    = <?= $templateId ?>;
+    var TEMPLATE_NAME  = <?= json_encode($templateName, JSON_UNESCAPED_UNICODE) ?>;
     var DOC_ID         = <?= $docId ?>;
     var TEMPLATE_VARS  = <?= json_encode($templateVars, JSON_UNESCAPED_UNICODE) ?>;
     </script>
@@ -267,16 +321,6 @@ foreach ($templateVarMap as $name => $docNames) {
         var quillMain   = null;   // alias of qSingle
         var qSingle = null, qLeft = null, qRight = null;
         var Delta       = Quill.import('delta');
-
-        // Local auto-saved draft of this document (resumable via the bottom-right
-        // "creating document" pill). Keyed by editing context so the new-doc draft
-        // and each edited-doc draft stay separate.
-        // Per-company namespace (window.FAKTA_CO set in nav.php) keeps tenants' drafts apart;
-        // DOC_DRAFT_ACTIVE must stay in sync with js/draft-document.js.
-        var DOC_CO           = '_co' + (window.FAKTA_CO || '0');
-        var DOC_DRAFT_KEY    = 'fakta_doc_draft_' + (DOC_ID ? 'd' + DOC_ID : 't' + TEMPLATE_ID + '_new') + DOC_CO;
-        var DOC_DRAFT_ACTIVE = 'fakta_active_doc_draft' + DOC_CO;
-        var _saving          = false; // set on a real save so we don't re-draft on redirect
 
         /* ─────────────────────────────────────────────
            Variable name modal
@@ -331,25 +375,73 @@ foreach ($templateVarMap as $name => $docNames) {
             if (!matches.length) { wrap.style.display = 'none'; list.innerHTML = ''; return; }
             wrap.style.display = '';
             list.innerHTML = matches.map(function (s) {
+                // Show the variable exactly as it reads in the document (no $…$).
                 return '<button type="button" class="var-suggest-chip" data-var="' + escAttr(s.name) + '"' +
                        (s.hint ? ' title="' + escAttr(s.hint) + '"' : '') +
-                       '>$' + escAttr(s.name) + '$</button>';
+                       '>' + escAttr(s.name) + '</button>';
             }).join('');
         }
 
-        function openVarNameModal(selectedText) {
-            document.getElementById('varNameInput').value = '';
+        // Paint a persistent highlight over the editor's selection. The native
+        // contenteditable highlight vanishes the moment focus moves to this
+        // panel, so we draw our own from the selection's DOM rectangles (a
+        // pointer-events:none overlay, like the page-guides). It's purely visual
+        // and survives blur, scrolling and re-selection.
+        function quillDomRange(q, range) {
+            if (!q || !range || !range.length) return null;
+            var s = q.getLeaf(range.index);
+            var e = q.getLeaf(range.index + range.length);
+            if (!s || !s[0] || !e || !e[0]) return null;
+            try {
+                var r = document.createRange();
+                r.setStart(s[0].domNode, s[1]);
+                r.setEnd(e[0].domNode, e[1]);
+                return r;
+            } catch (err) { return null; }
+        }
+        function showSelHighlight(q, range) {
+            var overlay = document.getElementById('docSelHighlight');
+            if (!overlay) return;
+            var domRange = quillDomRange(q, range);
+            if (!domRange) { overlay.innerHTML = ''; return; }
+            var base  = overlay.parentNode.getBoundingClientRect();
+            var rects = domRange.getClientRects();
+            var html  = '';
+            for (var i = 0; i < rects.length; i++) {
+                var rc = rects[i];
+                if (rc.width < 1 || rc.height < 1) continue;
+                html += '<div class="sel-rect" style="left:' + (rc.left - base.left) +
+                        'px;top:' + (rc.top - base.top) + 'px;width:' + rc.width +
+                        'px;height:' + rc.height + 'px"></div>';
+            }
+            overlay.innerHTML = html;
+        }
+        function hideSelHighlight() {
+            var overlay = document.getElementById('docSelHighlight');
+            if (overlay) overlay.innerHTML = '';
+        }
 
-            // Show what the variable will replace, if text was selected.
+        // Reflect the current insert target in the panel: the "will be replaced"
+        // note and the selection highlight. Called on open and whenever the user
+        // re-selects a different piece of text while the panel stays open.
+        function refreshVarTargetUI(q, range) {
             var note = document.getElementById('varReplaceNote');
-            var sel  = (selectedText || '').replace(/\s+/g, ' ').trim();
-            if (sel) {
+            if (q && range && range.length) {
+                var sel = q.getText(range.index, range.length).replace(/\s+/g, ' ').trim();
                 if (sel.length > 80) sel = sel.slice(0, 80) + '…';
                 note.textContent = 'Избраниот текст ќе биде заменет: „' + sel + '“';
                 note.style.display = '';
+                showSelHighlight(q, range);
             } else {
                 note.style.display = 'none';
+                hideSelHighlight();
             }
+        }
+
+        function openVarNameModal() {
+            document.getElementById('varNameInput').value = '';
+            var q = activeQuill || quillMain;
+            refreshVarTargetUI(q, q ? (q.getSelection() || q._sel) : null);
 
             _varSuggestions = buildSuggestions();
             renderVarSuggestions();
@@ -362,6 +454,8 @@ foreach ($templateVarMap as $name => $docNames) {
 
         function closeVarNameModal() {
             document.getElementById('varNameModal').classList.remove('open');
+            hideSelHighlight();
+            document.getElementById('varReplaceNote').style.display = 'none';
         }
 
         // Insert a variable at the caret/selection the user last had in an editor.
@@ -396,6 +490,7 @@ foreach ($templateVarMap as $name => $docNames) {
             var input = document.getElementById('varNameInput');
             input.value = '';
             document.getElementById('varReplaceNote').style.display = 'none';
+            hideSelHighlight();   // the highlighted text was just consumed
             _varSuggestions = buildSuggestions();
             renderVarSuggestions();
             input.focus();
@@ -440,12 +535,10 @@ foreach ($templateVarMap as $name => $docNames) {
         function insertVariable() {
             var q = activeQuill || quillMain;
             if (!q) return;
-            // getSelection(true) focuses the editor and records the caret in _sel
-            // (via selection-change), so the panel knows where to insert.
-            var range = q.getSelection(true) || { index: q.getLength() - 1, length: 0 };
-            // Text currently selected — it will be replaced by the first variable.
-            var selectedText = range.length ? q.getText(range.index, range.length) : '';
-            openVarNameModal(selectedText);
+            // getSelection(true) focuses the editor and records the caret/selection
+            // in _sel, so the panel knows where to insert and what to highlight.
+            q.getSelection(true);
+            openVarNameModal();
         }
 
         // Preserve the editor selection when the button is pressed — without
@@ -532,7 +625,16 @@ foreach ($templateVarMap as $name => $docNames) {
             // not). We deliberately ignore blur (range === null) so the range
             // survives clicking the toolbar — used to re-show the highlight after
             // a format (e.g. alignment) is applied.
-            q.on('selection-change', function (range) { if (range) q._sel = range; });
+            q.on('selection-change', function (range) {
+                if (range) q._sel = range;
+                // While the variable panel is open, keep its note + highlight in
+                // sync as the user re-selects text. Ignore blur (range === null)
+                // so focusing the panel doesn't wipe the highlight.
+                if (range && document.getElementById('varNameModal').classList.contains('open')) {
+                    activeQuill = q;
+                    refreshVarTargetUI(q, range);
+                }
+            });
             q.on('text-change', function (delta, oldDelta, source) {
                 if (source === 'user') {
                     // "/" at the start of a word opens the variable picker (slash menu).
@@ -558,10 +660,8 @@ foreach ($templateVarMap as $name => $docNames) {
                     }
                 }
                 // No pagination — the editor just grows. We only refresh the
-                // resumable draft and the (visual) page guides. Programmatic
-                // ('silent') loads update guides but must not create a draft.
+                // (visual) page guides as the content changes.
                 scheduleGuides();
-                if (source !== 'silent') scheduleSnapshot();
             });
             return q;
         }
@@ -849,7 +949,6 @@ foreach ($templateVarMap as $name => $docNames) {
                 setTimeout(function () { qSingle.focus(); }, 60);
             }
             scheduleGuides();
-            scheduleSnapshot();
         });
 
         /* ─────────────────────────────────────────────
@@ -911,8 +1010,9 @@ foreach ($templateVarMap as $name => $docNames) {
         }
 
         /* ─────────────────────────────────────────────
-           Local draft — auto-saved snapshot of the continuous streams,
-           resumable from the pill.
+           Unsaved-change tracking — a snapshot of the editor's continuous
+           streams, compared against the state the document opened with so we
+           can warn before leaving with unsaved work.
         ───────────────────────────────────────────── */
         function collectContinuous() {
             return {
@@ -924,78 +1024,10 @@ foreach ($templateVarMap as $name => $docNames) {
             };
         }
 
-        function editorIsEmpty() {
-            if (document.getElementById('docTitleInput').value.trim()) return false;
-            if (headerEl.textContent.trim() || footerEl.textContent.trim()) return false;
-            if (splitActive) return !(qLeft.getText().trim() || qRight.getText().trim());
-            return !qSingle.getText().trim();
-        }
-
-        function clearDraft() {
-            try { sessionStorage.removeItem(DOC_DRAFT_KEY); } catch (e) {}
-            try {
-                var a = JSON.parse(sessionStorage.getItem(DOC_DRAFT_ACTIVE));
-                if (a && a.key === DOC_DRAFT_KEY) sessionStorage.removeItem(DOC_DRAFT_ACTIVE);
-            } catch (e) {}
-        }
-
-        function snapshotDraft() {
-            if (_saving) return;
-            if (editorIsEmpty()) { clearDraft(); return; }
-            // Only treat it as a draft if the user actually changed something since
-            // opening. Just viewing a document (no edits) must NOT create a draft pill.
-            if (_initialSig !== null && draftSignature() === _initialSig) {
-                if (!_loadedFromDraft) clearDraft();
-                return;
-            }
-            var streams = collectContinuous();
-            var state = {
-                name:     document.getElementById('docTitleInput').value,
-                is_split: splitActive ? 1 : 0,
-                header:   streams.header,
-                footer:   streams.footer,
-                single:   streams.single,
-                left:     streams.left,
-                right:    streams.right,
-                ts:       Date.now()
-            };
-            try { sessionStorage.setItem(DOC_DRAFT_KEY, JSON.stringify(state)); } catch (e) {}
-            var url = 'kreraj-dokument.php?' + (DOC_ID
-                ? 'doc_id=' + DOC_ID + '&template_id=' + TEMPLATE_ID
-                : 'template_id=' + TEMPLATE_ID);
-            try {
-                sessionStorage.setItem(DOC_DRAFT_ACTIVE, JSON.stringify({
-                    key:   DOC_DRAFT_KEY,
-                    title: (state.name || '').trim() || 'Без наслов',
-                    url:   url,
-                    kind:  DOC_ID ? 'edit' : 'create',
-                    ts:    state.ts
-                }));
-            } catch (e) {}
-        }
-
-        var _draftTimer = null;
-        function scheduleSnapshot() {
-            clearTimeout(_draftTimer);
-            _draftTimer = setTimeout(snapshotDraft, 600);
-        }
-
         /* ─────────────────────────────────────────────
-           Initial content: local draft → EDIT_DOC → blank
+           Initial content: EDIT_DOC → blank
         ───────────────────────────────────────────── */
-        var _docDraft = null;
-        try { _docDraft = JSON.parse(sessionStorage.getItem(DOC_DRAFT_KEY)); } catch (e) {}
-
-        function draftHasContent(d) {
-            return !!d && (d.single !== undefined || d.left !== undefined ||
-                           d.right !== undefined || (d.pages && d.pages.length));
-        }
-
-        if (draftHasContent(_docDraft)) {
-            loadState(_docDraft);
-        } else if (EDIT_DOC) {
-            loadState(EDIT_DOC);
-        }
+        if (EDIT_DOC) loadState(EDIT_DOC);
 
         // Draw the page-break lines on load. A second pass after layout settles
         // keeps them accurate once fonts/metrics are final.
@@ -1003,19 +1035,13 @@ foreach ($templateVarMap as $name => $docNames) {
         setTimeout(drawPageBreaks, 200);
         window.addEventListener('resize', scheduleGuides);
 
-        // Auto-snapshot on any edit (typing, title changes), and flush the
-        // latest state when leaving so nothing typed is lost. Also refresh the
-        // page-break lines (e.g. when a header/footer is added, the per-page
-        // content height changes).
-        document.addEventListener('input', scheduleSnapshot);
+        // Refresh the page-break lines on any edit (e.g. adding a header/footer
+        // changes the per-page content height).
         document.addEventListener('input', scheduleGuides);
-        window.addEventListener('beforeunload', snapshotDraft);
 
-        // Signature of the state the document opened with. snapshotDraft() compares
-        // against this so merely opening/viewing a document never creates a draft —
-        // only a real change does. If we resumed an existing draft, keep it as-is
-        // when nothing changed. Captured after the initial load settles.
-        var _loadedFromDraft = draftHasContent(_docDraft);
+        // Signature of the state the document opened with; the live signature is
+        // compared against it to know whether there are unsaved changes. Captured
+        // after the initial load settles.
         var _initialSig = null;
         function draftSignature() {
             return JSON.stringify({
@@ -1024,7 +1050,53 @@ foreach ($templateVarMap as $name => $docNames) {
                 streams:  collectContinuous()
             });
         }
+        function isDirty() {
+            return _initialSig !== null && draftSignature() !== _initialSig;
+        }
         setTimeout(function () { _initialSig = draftSignature(); }, 50);
+
+        /* ─────────────────────────────────────────────
+           Warn before leaving the editor with unsaved changes
+        ───────────────────────────────────────────── */
+        var _leaving    = false;   // set once the user confirms they want to leave
+        var _leaveHref  = null;
+        var leaveModal  = document.getElementById('leaveModal');
+
+        function openLeaveModal(href) {
+            _leaveHref = href;
+            leaveModal.classList.add('open');
+            leaveModal.removeAttribute('aria-hidden');
+            document.body.classList.add('modal-open');
+        }
+        function closeLeaveModal() {
+            if (leaveModal.contains(document.activeElement)) document.activeElement.blur();
+            leaveModal.classList.remove('open');
+            leaveModal.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('modal-open');
+        }
+
+        // Intercept the Назад button: confirm only when there are unsaved changes.
+        var backLink = document.querySelector('.doc-toolbar-back');
+        if (backLink) backLink.addEventListener('click', function (e) {
+            if (!isDirty()) return;          // nothing to lose → navigate normally
+            e.preventDefault();
+            openLeaveModal(backLink.getAttribute('href'));
+        });
+        document.getElementById('leaveClose').addEventListener('click', closeLeaveModal);
+        document.getElementById('leaveStay').addEventListener('click', closeLeaveModal);
+        leaveModal.addEventListener('click', function (e) { if (e.target === this) closeLeaveModal(); });
+        document.getElementById('leaveDiscard').addEventListener('click', function () {
+            _leaving = true;
+            window.location.href = _leaveHref || ('pregled-shablon.php?id=' + TEMPLATE_ID);
+        });
+
+        // Catch other exits (refresh, tab close, browser Back) with the native
+        // prompt while there are unsaved changes.
+        window.addEventListener('beforeunload', function (e) {
+            if (_leaving || !isDirty()) return;
+            e.preventDefault();
+            e.returnValue = '';
+        });
 
         /* ─────────────────────────────────────────────
            Save document
@@ -1114,13 +1186,16 @@ foreach ($templateVarMap as $name => $docNames) {
             }, 1900);
         }
 
-        document.getElementById('btnSave').addEventListener('click', function () {
+        // Persist the document. Returns false (without saving) when the title is
+        // missing; otherwise saves and calls onSuccess() once the server confirms.
+        // Used by the Save button and by "Преземи" (which saves before previewing).
+        function saveDocument(onSuccess) {
             var titleInput = document.getElementById('docTitleInput');
             var name = titleInput.value.trim();
             if (!name) {
                 titleInput.classList.add('input-error');
                 titleInput.focus();
-                return;
+                return false;
             }
             titleInput.classList.remove('input-error');
 
@@ -1149,24 +1224,21 @@ foreach ($templateVarMap as $name => $docNames) {
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
                     if (res.success) {
-                        // Stay on the page (no redirect). Drop the draft under the
-                        // key this doc was edited under FIRST…
-                        clearDraft();
-                        // …then, if this was a brand-new doc, adopt the id the
-                        // server assigned so later saves update it (no duplicates)
-                        // and a refresh reopens the saved document.
+                        // Stay on the page (no redirect). If this was a brand-new
+                        // doc, adopt the id the server assigned so later saves
+                        // update it (no duplicates) and a refresh reopens it.
                         if (!DOC_ID && res.id) {
                             DOC_ID = res.id;
                             try {
                                 history.replaceState(null, '',
                                     'kreraj-dokument.php?doc_id=' + DOC_ID + '&template_id=' + TEMPLATE_ID);
                             } catch (e) {}
-                            DOC_DRAFT_KEY = 'fakta_doc_draft_d' + DOC_ID + DOC_CO;
                         }
                         // The just-saved state is the new "unchanged" baseline, so
-                        // it won't immediately re-create a draft pill.
+                        // leaving right after a save won't warn about lost changes.
                         _initialSig = draftSignature();
                         showSaved(btn);
+                        if (onSuccess) onSuccess();
                     } else {
                         alert(res.message || 'Грешка при зачувување.');
                         btn.disabled = false;
@@ -1176,7 +1248,61 @@ foreach ($templateVarMap as $name => $docNames) {
                     alert('Грешка при поврзување.');
                     btn.disabled = false;
                 });
+            return true;
+        }
+
+        document.getElementById('btnSave').addEventListener('click', function () { saveDocument(); });
+
+        /* ─────────────────────────────────────────────
+           Преземи / Избриши this document (only present when editing a saved doc)
+        ───────────────────────────────────────────── */
+        var btnDownloadDoc = document.getElementById('btnDownloadDoc');
+        if (btnDownloadDoc) btnDownloadDoc.addEventListener('click', function () {
+            // The preview workspace reads from the DB, so save the current edits
+            // first, then open it scoped to just this document.
+            saveDocument(function () {
+                if (!window.DraftWorkspace) return;
+                var name = document.getElementById('docTitleInput').value.trim();
+                window.DraftWorkspace.open(TEMPLATE_ID, TEMPLATE_NAME, {
+                    docId: DOC_ID, docName: name, refresh: true
+                });
+            });
         });
+
+        var btnDeleteDoc = document.getElementById('btnDeleteDoc');
+        if (btnDeleteDoc) {
+            var dm = document.getElementById('docDeleteModal');
+            var openDel  = function () { dm.classList.add('open'); dm.removeAttribute('aria-hidden'); document.body.classList.add('modal-open'); };
+            var closeDel = function () {
+                if (dm.contains(document.activeElement)) document.activeElement.blur();
+                dm.classList.remove('open'); dm.setAttribute('aria-hidden', 'true'); document.body.classList.remove('modal-open');
+            };
+            btnDeleteDoc.addEventListener('click', openDel);
+            document.getElementById('docDeleteClose').addEventListener('click', closeDel);
+            document.getElementById('docDeleteCancel').addEventListener('click', closeDel);
+            dm.addEventListener('click', function (e) { if (e.target === this) closeDel(); });
+
+            document.getElementById('docDeleteConfirm').addEventListener('click', function () {
+                var btn = this;
+                btn.disabled = true;
+                btn.textContent = 'Се брише...';
+                fetch('api/document_api.php', { method: 'POST', body: new URLSearchParams({ action: 'delete', id: DOC_ID }) })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        if (res.success) {
+                            _leaving = true;   // don't warn about unsaved changes
+                            window.location.href = 'pregled-shablon.php?id=' + TEMPLATE_ID;
+                        } else {
+                            alert(res.message || 'Грешка при бришење.');
+                            btn.disabled = false; btn.textContent = 'Избриши';
+                        }
+                    })
+                    .catch(function () {
+                        alert('Грешка при поврзување.');
+                        btn.disabled = false; btn.textContent = 'Избриши';
+                    });
+            });
+        }
 
         // Ctrl+S (Cmd+S) → save, instead of the browser's "save page" dialog.
         document.addEventListener('keydown', function (e) {

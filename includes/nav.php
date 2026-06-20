@@ -90,6 +90,5 @@ window.FAKTA_CO   = <?= json_encode((string)(function_exists('current_company_id
 window.FAKTA_ROLE = <?= json_encode((string)(function_exists('current_role') ? (current_role() ?? '') : '')) ?>;
 window.FAKTA_UID  = <?= json_encode((int)($navUser['id'] ?? 0)) ?>;
 </script>
-<!-- Global drafts (docked on every page): use-template workspace + in-progress document -->
+<!-- Global "Користи шаблон" workspace, docked on every page -->
 <script src="js/draft-workspace.js" defer></script>
-<script src="js/draft-document.js" defer></script>

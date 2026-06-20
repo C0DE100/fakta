@@ -24,7 +24,11 @@
 
     var ov = null;          // overlay element
     var mounted = false;
-    var state = { id: null, name: '', docs: null, values: {}, built: false };
+    // docId/docName set ⇒ single-document mode (preview & download just that doc,
+    // and only ask for its variables); null ⇒ whole-template mode. allDocs holds
+    // the full fetched list so we can re-filter without re-fetching.
+    var state = { id: null, name: '', docId: null, docName: '',
+                  docs: null, allDocs: null, values: {}, built: false };
 
     /* ── tiny helpers ─────────────────────────────────────── */
     function esc(s) {
@@ -181,6 +185,7 @@
         ov.innerHTML =
             '<div class="ws-bar">' +
                 '<div class="ws-bar-left">' +
+                    '<span class="ws-mode-badge" id="wsModeBadge"></span>' +
                     '<span class="ws-title" id="wsTitle">Користи шаблон</span>' +
                     '<span class="ws-saved" id="wsSaved"></span>' +
                 '</div>' +
@@ -241,7 +246,16 @@
     }
     function setTitle() {
         var el = document.getElementById('wsTitle');
-        if (el) el.textContent = 'Користи шаблон: ' + state.name;
+        if (el) {
+            el.textContent = state.docId
+                ? 'Преземи: ' + (state.docName || state.name)
+                : 'Користи шаблон: ' + state.name;
+        }
+        var badge = document.getElementById('wsModeBadge');
+        if (badge) {
+            badge.textContent = state.docId ? 'Единечен документ' : 'Цел шаблон';
+            badge.classList.toggle('ws-mode-badge--doc', !!state.docId);
+        }
     }
 
     /* ── chip value overlay ───────────────────────────────── */
@@ -488,7 +502,7 @@
             var hint = varMap[name].length ? 'Употребено во: ' + varMap[name].join(', ') : '';
             var val  = state.values[name] !== undefined ? state.values[name] : '';
             return '<div class="ws-var-field">' +
-                '<label class="ws-var-field-label">$' + esc(name) + '$</label>' +
+                '<label class="ws-var-field-label">' + esc(name) + '</label>' +
                 (hint ? '<div class="ws-var-field-hint">' + esc(hint) + '</div>' : '') +
                 '<input type="text" class="field ws-var-input" data-var="' + escAttr(name) + '" ' +
                     'value="' + escAttr(val) + '" placeholder="Внеси вредност..." autocomplete="off">' +
@@ -607,36 +621,53 @@
     }
 
     /* ── open / minimize / expand / close / download ──────── */
+    // Narrow allDocs to the active view (one doc, or the whole template), seed
+    // any missing variable values, then render.
+    function applyDocFilterAndBuild() {
+        state.docs = state.docId != null
+            ? (state.allDocs || []).filter(function (d) { return parseInt(d.id, 10) === parseInt(state.docId, 10); })
+            : (state.allDocs || []);
+        Object.keys(getVarsFromDocs(state.docs)).forEach(function (n) {
+            if (state.values[n] === undefined) state.values[n] = '';
+        });
+        renderVarFields();
+        buildPreview();
+        markSaved('');
+        state.built = true;
+    }
+
     function loadAndBuild() {
         ensureQuill(function () {
-            if (state.docs) { renderVarFields(); buildPreview(); markSaved(''); state.built = true; return; }
+            if (state.allDocs) { applyDocFilterAndBuild(); return; }
             markSaved('Вчитување…');
             fetch('api/document_api.php?action=list_by_template&template_id=' + encodeURIComponent(state.id))
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
                     if (!res.success) { markSaved('Грешка при вчитување'); return; }
-                    state.docs = res.data || [];
-                    Object.keys(getVarsFromDocs(state.docs)).forEach(function (n) {
-                        if (state.values[n] === undefined) state.values[n] = '';
-                    });
-                    renderVarFields();
-                    buildPreview();
-                    markSaved('');
-                    state.built = true;
+                    state.allDocs = res.data || [];
+                    applyDocFilterAndBuild();
                 })
                 .catch(function () { markSaved('Грешка при вчитување'); });
         });
     }
 
-    function open(id, name) {
+    // opts.docId / opts.docName ⇒ open scoped to a single document.
+    function open(id, name, opts) {
+        opts = opts || {};
         ensureMounted();
         if (!ov) return;
-        // Switching templates resets the in-memory build.
-        if (state.id !== id) { state.docs = null; state.built = false; }
+        var docId = (opts.docId != null) ? parseInt(opts.docId, 10) : null;
+        // Switching template resets the fetched docs; switching template OR the
+        // doc scope invalidates the current build so the preview is rebuilt.
+        // refresh:true forces a re-fetch (e.g. opened right after an edit was saved).
+        if (state.id !== id || opts.refresh) state.allDocs = null;
+        if (state.id !== id || state.docId !== docId || opts.refresh) state.built = false;
         state.id = id;
         state.name = name || ('Шаблон #' + id);
+        state.docId = docId;
+        state.docName = opts.docName || '';
         state.values = loadVals(id);
-        setActiveDraft({ id: id, name: state.name });
+        setActiveDraft({ id: id, name: state.name, docId: docId, docName: state.docName });
         setTitle();
         expand();
     }
@@ -685,8 +716,11 @@
         if (!ov) return;
         state.id = d.id;
         state.name = d.name || ('Шаблон #' + d.id);
+        state.docId = (d.docId != null) ? d.docId : null;
+        state.docName = d.docName || '';
         state.values = loadVals(d.id);
         state.docs = null;
+        state.allDocs = null;
         state.built = false;
         setTitle();
         ov.classList.add('open', 'minimized');

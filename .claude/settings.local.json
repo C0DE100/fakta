@@ -30,7 +30,12 @@
       "Bash(cd /c/xampp/htdocs/fakta *)",
       "Bash(node --check /tmp/p.js)",
       "Bash(node --check js/draft-workspace.js)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost/fakta/pregled-shablon.php?id=1\")"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost/fakta/pregled-shablon.php?id=1\")",
+      "Bash(php -l kreraj-dokument.php)",
+      "Bash(php -l c:/xampp/htdocs/fakta/kreraj-dokument.php)",
+      "Bash(php -l c:/xampp/htdocs/fakta/tipski-dokumenti.php)",
+      "Bash(node --check c:/xampp/htdocs/fakta/js/draft-workspace.js)",
+      "Bash(php -l c:/xampp/htdocs/fakta/pregled-shablon.php)"
     ],
     "additionalDirectories": [
       "\\tmp"

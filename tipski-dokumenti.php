@@ -32,7 +32,7 @@ $currentPage = 'tipski-dokumenti';
                     <h1 class="text-lg font-semibold text-slate-800">Типски Документи</h1>
                     <p class="text-sm text-slate-400 mt-1">Управувај со типски документи, папки и шаблони</p>
                 </div>
-                <div class="flex items-center gap-2 mt-1 flex-shrink-0">
+                <div id="rootActions" class="flex items-center gap-2 mt-1 flex-shrink-0">
                     <button id="btnNewFolder" class="btn-secondary">
                         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><line x1="12" x2="12" y1="10" y2="16"/><line x1="9" x2="15" y1="13" y2="13"/>
@@ -60,7 +60,7 @@ $currentPage = 'tipski-dokumenti';
                         <h1 id="folderTitleName" class="text-lg font-semibold text-slate-800"></h1>
                         <span id="folderTitleCount" class="folder-view-count"></span>
                     </div>
-                    <div class="flex items-center gap-2 flex-shrink-0">
+                    <div id="folderActions" class="flex items-center gap-2 flex-shrink-0">
                         <button id="btnFolderRename" class="btn-secondary">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                             Преименувај
@@ -77,11 +77,11 @@ $currentPage = 'tipski-dokumenti';
             </div>
         </div>
 
-        <div class="tpl-search-wrap">
+        <div id="tplSearchWrap" class="tpl-search-wrap tpl-search-inline">
             <svg class="tpl-search-ico" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
             </svg>
-            <input type="text" id="searchTemplates" class="field tpl-search-input" placeholder="Пребарај шаблони по назив или опис..." autocomplete="off">
+            <input type="text" id="searchTemplates" class="field tpl-search-input" placeholder="Пребарај шаблони..." autocomplete="off">
         </div>
 
         <!-- Folders (root view only) -->
@@ -275,12 +275,14 @@ $currentPage = 'tipski-dokumenti';
         // Templates to show given the current folder + search.
         function templatesForView() {
             var q = searchQuery();
-            if (q) {
-                // Searching flattens across every folder.
-                return allTemplates.filter(function (t) { return matchesSearch(t, q); });
-            }
             return allTemplates.filter(function (t) {
                 var fid = (t.folder_id === null || typeof t.folder_id === 'undefined') ? null : t.folder_id;
+                if (q) {
+                    // At root, search flattens across every folder; inside a
+                    // folder, it stays scoped to that folder's templates.
+                    if (currentFolderId !== null && fid !== currentFolderId) return false;
+                    return matchesSearch(t, q);
+                }
                 return fid === currentFolderId;
             });
         }
@@ -317,6 +319,11 @@ $currentPage = 'tipski-dokumenti';
             // Headers
             $id('rootHeader').style.display   = inFolder ? 'none' : '';
             $id('folderHeader').style.display = inFolder ? '' : 'none';
+
+            // Dock the search to the left of the active header's buttons.
+            var actions = $id(inFolder ? 'folderActions' : 'rootActions');
+            var sw = $id('tplSearchWrap');
+            if (actions && sw && sw.parentNode !== actions) actions.insertBefore(sw, actions.firstChild);
             if (inFolder) {
                 var f = folderById(currentFolderId);
                 var count = templatesForView().length;
@@ -367,10 +374,16 @@ $currentPage = 'tipski-dokumenti';
                 if (searching) {
                     grid.innerHTML = '<p class="list-msg" style="padding:1.5rem 0;grid-column:1/-1">Нема резултати за пребарувањето.</p>';
                     empty.style.display = 'none';
-                } else {
-                    // Empty state — message depends on context.
-                    $id('tplEmptyMsg').textContent = inFolder ? 'Папката е празна' : 'Сеуште нема шаблони';
+                } else if (inFolder) {
+                    $id('tplEmptyMsg').textContent = 'Папката е празна';
                     empty.style.display = '';
+                } else if (!allFolders.length) {
+                    // Root is truly empty — no templates AND no folders.
+                    $id('tplEmptyMsg').textContent = 'Сеуште нема шаблони или папки';
+                    empty.style.display = '';
+                } else {
+                    // Root has folders (just no loose templates) — show nothing.
+                    empty.style.display = 'none';
                 }
                 return;
             }

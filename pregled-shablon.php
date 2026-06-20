@@ -75,7 +75,13 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
                 </div>
                 <p id="tplDescDisplay" class="tpl-view-desc"<?= ($template['description'] ?? '') !== '' ? '' : ' style="display:none"' ?>><?= htmlspecialchars($template['description'] ?? '') ?></p>
             </div>
-            <div style="display:flex;gap:0.5rem;flex-shrink:0;margin-top:0.125rem">
+            <div style="display:flex;gap:0.5rem;flex-shrink:0;margin-top:0.125rem;align-items:center">
+                <div id="docSearchWrap" class="tpl-search-wrap tpl-search-inline" style="display:none">
+                    <svg class="tpl-search-ico" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+                    </svg>
+                    <input type="text" id="searchDocs" class="field tpl-search-input" placeholder="Пребарај документи..." autocomplete="off">
+                </div>
                 <!-- Adding documents is allowed for everyone, including praktikant. -->
                 <a href="kreraj-dokument.php?template_id=<?= $templateId ?>" class="btn-new-client">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -269,6 +275,10 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
         function renderDocCards() {
             var grid  = document.getElementById('docCardsGrid');
             var empty = document.getElementById('docCardsEmpty');
+            var searchWrap = document.getElementById('docSearchWrap');
+
+            // The search is only useful once the template has documents.
+            if (searchWrap) searchWrap.style.display = DOCS.length ? '' : 'none';
 
             if (!DOCS.length) {
                 grid.innerHTML = '';
@@ -277,10 +287,25 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
             }
 
             empty.style.display = 'none';
+
+            var q = (document.getElementById('searchDocs').value || '').trim().toLowerCase();
+            var docs = q
+                ? DOCS.filter(function (d) { return (d.name || '').toLowerCase().indexOf(q) !== -1; })
+                : DOCS;
+
+            if (!docs.length) {
+                grid.innerHTML = '<p class="list-msg" style="padding:1.5rem 0;grid-column:1/-1">Нема документи за пребарувањето.</p>';
+                return;
+            }
+
+            // Document file icon so a card clearly reads as a document.
+            var FILE_ICO = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+
             var html = '';
-            DOCS.forEach(function (doc) {
+            docs.forEach(function (doc) {
                 html += '<div class="doc-card" data-doc-id="' + doc.id + '">' +
                     '<div class="doc-card-title-bar">' +
+                        '<span class="doc-card-ico" aria-hidden="true">' + FILE_ICO + '</span>' +
                         '<span class="doc-card-name" title="' + escapeHtml(doc.name) + '">' + escapeHtml(doc.name) + '</span>' +
                         '<button class="btn-icon-color btn-download-doc" data-id="' + doc.id + '" title="Преземи PDF">' +
                             '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -309,7 +334,7 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
             grid.innerHTML = html;
 
             // Init read-only Quill previews
-            DOCS.forEach(function (doc) {
+            docs.forEach(function (doc) {
                 var el = document.getElementById('preview-' + doc.id);
                 if (!el) return;
                 var page = mergePages(doc.pages);
@@ -568,21 +593,12 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
             }
             if (!doc) return;
 
-            var varObj = getVarsFromDoc(doc);
-            var varNames = Object.keys(varObj);
-
-            if (!varNames.length) {
-                printDoc(doc, {});
-                return;
+            // Open the same live preview workspace as "Користи шаблон", but
+            // scoped to just this document — so it only asks for this doc's
+            // variables and downloads this doc alone.
+            if (window.DraftWorkspace) {
+                window.DraftWorkspace.open(TEMPLATE.id, TEMPLATE.name, { docId: doc.id, docName: doc.name });
             }
-
-            // Build varMap with doc name as usage
-            var varMap = {};
-            varNames.forEach(function (v) { varMap[v] = []; }); // single doc — no "used in" hint needed
-
-            openUseModal('Преземи: ' + doc.name, varMap, function (values) {
-                printDoc(doc, values);
-            });
         });
 
         /* ──────────────────────────────
@@ -729,6 +745,7 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
         /* ─────────────────────────────────────────────
            Init
         ───────────────────────────────────────────── */
+        document.getElementById('searchDocs').addEventListener('input', renderDocCards);
         renderDocCards();
 
         // Arrived via "Користи шаблон" from the listings page (?use=1) →

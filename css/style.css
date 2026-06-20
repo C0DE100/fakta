@@ -938,7 +938,9 @@ a.client-info-row:hover { color: var(--accent); }
 .site-nav {
     box-shadow: 0 1px 0 #e8e4de;
     position: relative;
-    z-index: 20;
+    /* Above the sticky doc toolbar (z-index 20) so the profile dropdown, which
+       overflows down into the page, is never painted behind it. */
+    z-index: 40;
 }
 .nav-inner {
     transition: padding-top 0.28s cubic-bezier(0.4,0,0.2,1),
@@ -1748,6 +1750,19 @@ body.modal-open {
     padding: 0.5rem 0.9rem;
     line-height: 1.1;
 }
+/* Delete-this-document button — danger-tinted secondary button */
+.doc-toolbar-actions .btn-tool-danger { color: #dc2626; }
+.doc-toolbar-actions .btn-tool-danger:hover {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #b91c1c;
+}
+[data-theme="dark"] .doc-toolbar-actions .btn-tool-danger { color: #f87171; }
+[data-theme="dark"] .doc-toolbar-actions .btn-tool-danger:hover {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: #7f1d1d;
+    color: #fca5a5;
+}
 
 /* Save button → flips to green with a check mark after a successful save,
    then animates back to normal. */
@@ -2147,6 +2162,23 @@ body.modal-open {
     inset: 0;
     pointer-events: none;
     z-index: 4;
+}
+
+/* Persistent selection highlight for the "insert variable" panel. Translucent
+   so the text underneath stays readable; mimics the native text selection. */
+.doc-sel-highlight {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 3;
+}
+.doc-sel-highlight .sel-rect {
+    position: absolute;
+    background: rgba(37, 99, 235, 0.22);
+    border-radius: 2px;
+}
+[data-theme="dark"] .doc-sel-highlight .sel-rect {
+    background: rgba(96, 165, 250, 0.32);
 }
 .doc-page-break {
     position: absolute;
@@ -2790,6 +2822,15 @@ body.modal-open {
 .tpl-search-wrap { position: relative; margin-bottom: 1.25rem; max-width: 26rem; }
 .tpl-search-ico { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #a8a29e; pointer-events: none; }
 .tpl-search-input { padding-left: 2.25rem; }
+/* Inline variant — docked to the left of the header action buttons. */
+.tpl-search-wrap.tpl-search-inline {
+    margin-bottom: 0;
+    width: 17rem;
+    max-width: none;
+    flex-shrink: 1;
+    min-width: 8rem;
+}
+.tpl-search-wrap.tpl-search-inline .tpl-search-input { width: 100%; }
 
 /* Colour swatches (create modal + recolour popover) */
 .tpl-color-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1rem; }
@@ -3072,29 +3113,37 @@ body.tpl-dragging .folder-card { border-style: dashed; }
 /* Document cards grid (detail page) */
 .doc-cards-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1.75rem;
+    grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+    gap: 1.25rem;
 }
 .doc-card {
     background: #ffffff;
-    border: 1px solid transparent;
-    border-radius: 18px;
+    /* Every card has the same defined border so split & single look identical */
+    border: 1px solid #e8e4de;
+    border-radius: 14px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     cursor: pointer;
-    box-shadow: 0 1px 2px rgba(28,25,23,0.04), 0 10px 26px -18px rgba(28,25,23,0.20);
-    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    box-shadow: 0 1px 2px rgba(28,25,23,0.04), 0 8px 20px -16px rgba(28,25,23,0.18);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 .doc-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 6px 16px rgba(28,25,23,0.07), 0 22px 44px -22px rgba(28,25,23,0.30);
+    transform: translateY(-2px);
+    border-color: #ddd6cc;
+    box-shadow: 0 5px 14px rgba(28,25,23,0.07), 0 18px 36px -22px rgba(28,25,23,0.28);
 }
 .doc-card-title-bar {
-    padding: 1.4rem 1.5rem 0.55rem;
+    padding: 0.85rem 0.85rem 0.6rem 1rem;
     display: flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.45rem;
+}
+/* Document file icon — reinforces that the card is a document */
+.doc-card-ico {
+    flex-shrink: 0;
+    display: inline-flex;
+    color: var(--accent);
 }
 /* Borderless icon controls inside the card — softer, less boxy */
 .doc-card-title-bar .btn-icon-color,
@@ -3105,7 +3154,7 @@ body.tpl-dragging .folder-card { border-style: dashed; }
 .doc-card-name {
     flex: 1;
     font-weight: 600;
-    font-size: 1.0625rem;
+    font-size: 0.9375rem;
     letter-spacing: -0.01em;
     color: #1c1917;
     min-width: 0;
@@ -3114,7 +3163,7 @@ body.tpl-dragging .folder-card { border-style: dashed; }
     white-space: nowrap;
 }
 .doc-preview-area {
-    height: 244px;
+    height: 176px;
     overflow: hidden;
     background: transparent;
     position: relative;
@@ -3124,19 +3173,23 @@ body.tpl-dragging .folder-card { border-style: dashed; }
     content: '';
     position: absolute;
     bottom: 0; left: 0; right: 0;
-    height: 64px;
+    height: 52px;
     background: linear-gradient(transparent, #ffffff);
     pointer-events: none;
 }
 .doc-preview-inner {
-    padding: 0.4rem 1.5rem 1rem;
+    padding: 0.75rem 1rem 1rem;
     height: 100%;
     overflow: hidden;
 }
+/* Quill is initialised on .doc-preview-inner itself for single docs (so that
+   element becomes the .ql-container) and on child columns for split docs —
+   target both so neither keeps Quill's default snow border. */
+.doc-preview-inner.ql-container.ql-snow,
 .doc-preview-inner .ql-container.ql-snow {
     border: none;
     font-family: 'Times New Roman', Times, Georgia, serif;
-    font-size: 12.5pt;
+    font-size: 10.5pt;
     color: #1c1917;
 }
 .doc-preview-inner .ql-editor {
@@ -3144,8 +3197,8 @@ body.tpl-dragging .folder-card { border-style: dashed; }
     overflow: hidden;
     min-height: unset;
     max-height: none;
-    font-size: 12.5pt;
-    line-height: 1.7;
+    font-size: 10.5pt;
+    line-height: 1.55;
     color: #1c1917;
 }
 .doc-preview-inner.doc-preview-split {
@@ -3166,7 +3219,7 @@ body.tpl-dragging .folder-card { border-style: dashed; }
 }
 [data-theme="dark"] .doc-preview-split .doc-preview-col-divider { background: #2e2e36; }
 .doc-card-footer {
-    padding: 0.35rem 1.5rem 1.4rem;
+    padding: 0.7rem 1rem 1rem;
     display: flex;
     gap: 0.5rem;
     align-items: center;
@@ -3179,9 +3232,9 @@ body.tpl-dragging .folder-card { border-style: dashed; }
 }
 [data-theme="dark"] .doc-card-readonly { color: #606068; }
 .doc-card-open {
-    border-radius: 12px;
-    padding: 0.72rem 1rem;
-    font-size: 0.95rem;
+    border-radius: 10px;
+    padding: 0.55rem 1rem;
+    font-size: 0.875rem;
     font-weight: 600;
 }
 
@@ -3288,6 +3341,32 @@ body.ws-open { overflow: hidden; }
     box-shadow: 0 1px 4px rgba(28, 25, 23, 0.05);
 }
 .ws-bar-left { display: flex; align-items: baseline; gap: 0.75rem; min-width: 0; }
+/* Mode badge — tells the user whether they're previewing the whole template or
+   a single document. */
+.ws-mode-badge {
+    flex-shrink: 0;
+    align-self: center;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent-border);
+    white-space: nowrap;
+}
+.ws-mode-badge--doc {
+    background: #fef3e2;
+    color: #b45309;
+    border-color: #fcd9a8;
+}
+[data-theme="dark"] .ws-mode-badge--doc {
+    background: rgba(180, 83, 9, 0.18);
+    color: #fbbf24;
+    border-color: #7c5410;
+}
 .ws-title { font-size: 0.95rem; font-weight: 600; color: #1c1917; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ws-saved { font-size: 0.75rem; color: #a8a29e; white-space: nowrap; flex-shrink: 0; }
 .ws-bar-actions { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
@@ -3540,6 +3619,7 @@ body.ws-open { overflow: hidden; }
 [data-theme="dark"] .tpl-card-actions { border-color: #2e2e36; }
 [data-theme="dark"] .doc-preview-area { background: transparent; }
 [data-theme="dark"] .doc-preview-area::after { background: linear-gradient(transparent, #1c1c21); }
+[data-theme="dark"] .doc-preview-inner.ql-container.ql-snow,
 [data-theme="dark"] .doc-preview-inner .ql-container.ql-snow,
 [data-theme="dark"] .doc-preview-inner .ql-editor { color: #ededf0; }
 [data-theme="dark"] .btn-icon-danger { border-color: #4a2e2e; color: #c97a7a; }
