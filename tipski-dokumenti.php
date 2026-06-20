@@ -50,21 +50,27 @@ $currentPage = 'tipski-dokumenti';
 
             <!-- Folder header (inside a folder) -->
             <div id="folderHeader" class="folder-view-head" style="display:none">
-                <button id="btnBackToRoot" class="folder-back" title="Назад">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                    Типски Документи
-                </button>
+                <nav class="crumbs">
+                    <button id="btnBackToRoot" class="crumb crumb-back" title="Типски Документи">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                        Типски Документи
+                    </button>
+                    <span class="crumb-sep"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+                    <span class="crumb crumb-current">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                        <span id="crumbFolderName"></span>
+                    </span>
+                </nav>
                 <div class="folder-view-titlebar">
                     <div class="folder-view-title">
                         <svg class="folder-view-ico" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
                         <h1 id="folderTitleName" class="text-lg font-semibold text-slate-800"></h1>
+                        <button id="btnFolderRename" class="btn-icon-edit" title="Преименувај папка">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                        </button>
                         <span id="folderTitleCount" class="folder-view-count"></span>
                     </div>
                     <div id="folderActions" class="flex items-center gap-2 flex-shrink-0">
-                        <button id="btnFolderRename" class="btn-secondary">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                            Преименувај
-                        </button>
                         <button id="btnFolderDelete" class="btn-icon-danger" title="Избриши папка">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                         </button>
@@ -328,6 +334,7 @@ $currentPage = 'tipski-dokumenti';
                 var f = folderById(currentFolderId);
                 var count = templatesForView().length;
                 $id('folderTitleName').textContent = f ? f.name : '';
+                $id('crumbFolderName').textContent = f ? f.name : '';
                 $id('folderTitleCount').textContent = count + ' ' + (count === 1 ? 'шаблон' : 'шаблони');
                 // Praktikant: only show rename/delete for folders they created.
                 var canF = canManageFolder(f);

@@ -34,6 +34,14 @@ unset($doc);
 // Return to the folder this template lives in (if any), so "Назад" lands where
 // the user was browsing rather than always at the root.
 $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=' . (int) $template['folder_id']) : '');
+
+// Folder name for the breadcrumb trail (null when the template sits at root).
+$folderName = null;
+if (!empty($template['folder_id'])) {
+    $fstmt = $pdo->prepare('SELECT name FROM template_folders WHERE id = ? AND company_id = ?');
+    $fstmt->execute([(int) $template['folder_id'], $companyId]);
+    $folderName = $fstmt->fetchColumn() ?: null;
+}
 ?>
 <!DOCTYPE html>
 <html lang="mk">
@@ -59,15 +67,29 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
     <div class="max-w-6xl mx-auto px-4 pb-16">
 
         <!-- Top bar -->
-        <div class="pt-8 pb-6 flex items-start gap-4 flex-wrap">
-            <a href="<?= htmlspecialchars($backUrl) ?>" class="btn-secondary" style="flex-shrink:0;margin-top:0.125rem">
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>
-                </svg>
-                Назад
+        <div class="pt-8 pb-6">
+          <nav class="crumbs">
+            <a class="crumb crumb-back" href="tipski-dokumenti.php" title="Типски Документи">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                Типски Документи
             </a>
+            <?php if ($folderName !== null): ?>
+            <span class="crumb-sep"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+            <a class="crumb" href="tipski-dokumenti.php?folder=<?= (int) $template['folder_id'] ?>">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                <?= htmlspecialchars($folderName) ?>
+            </a>
+            <?php endif; ?>
+            <span class="crumb-sep"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+            <span class="crumb crumb-current">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                <?= htmlspecialchars($template['name']) ?>
+            </span>
+          </nav>
+          <div class="flex items-start gap-4 flex-wrap" style="margin-top:0.875rem">
             <div style="flex:1;min-width:0">
                 <div style="display:flex;align-items:center;gap:0.5rem;min-width:0">
+                    <svg class="tpl-view-ico" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                     <h1 id="tplNameHeading" class="text-lg font-semibold text-slate-800" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= htmlspecialchars($template['name']) ?></h1>
                     <?php if ($canManageTemplate): ?>
                     <button id="btnEditTemplate" class="btn-icon-edit" title="Уреди назив и опис">
@@ -87,19 +109,43 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
                     <input type="text" id="searchDocs" class="field tpl-search-input" placeholder="Пребарај документи..." autocomplete="off">
                 </div>
                 <!-- Adding documents is allowed for everyone, including praktikant. -->
-                <button id="btnImportDoc" class="btn-secondary" title="Импортирај .docx документ со [полиња]">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>
-                    </svg>
-                    Импортирај
-                    <span class="import-ext-badge">.docx</span>
-                </button>
-                <a href="kreraj-dokument.php?template_id=<?= $templateId ?>" class="btn-new-client">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M5 12h14"/><path d="M12 5v14"/>
-                    </svg>
-                    Нов документ
-                </a>
+                <div class="newdoc-dropdown" id="newDocDropdown">
+                    <button id="btnNewDoc" type="button" class="btn-new-client" aria-haspopup="true" aria-expanded="false">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14"/><path d="M12 5v14"/>
+                        </svg>
+                        Нов документ
+                        <svg class="newdoc-caret" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m6 9 6 6 6-6"/>
+                        </svg>
+                    </button>
+                    <div class="newdoc-menu" id="newDocMenu" hidden>
+                        <button type="button" class="newdoc-menu-item is-created" id="ndCreate">
+                            <span class="newdoc-item-tile">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" x2="12" y1="18" y2="12"/><line x1="9" x2="15" y1="15" y2="15"/>
+                                </svg>
+                            </span>
+                            <span class="newdoc-item-text">
+                                <span class="newdoc-item-title">Нов документ</span>
+                                <span class="newdoc-item-sub">Креирај и уреди во едиторот</span>
+                            </span>
+                            <span class="doc-type-badge is-created newdoc-item-badge">Креирај</span>
+                        </button>
+                        <button type="button" class="newdoc-menu-item is-imported" id="ndImport">
+                            <span class="newdoc-item-tile">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>
+                                </svg>
+                            </span>
+                            <span class="newdoc-item-text">
+                                <span class="newdoc-item-title">Импортирај .docx</span>
+                                <span class="newdoc-item-sub">Word документ со [полиња]</span>
+                            </span>
+                            <span class="doc-type-badge is-imported newdoc-item-badge">Импортирај</span>
+                        </button>
+                    </div>
+                </div>
                 <button id="btnUseTemplate" class="btn-secondary">
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -109,6 +155,7 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
                     Користи шаблон
                 </button>
             </div>
+          </div>
         </div>
 
         <!-- Document cards grid -->
@@ -295,6 +342,16 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
             return d.innerHTML;
         }
 
+        // "2024-05-12 10:30:00" → "12.05.2024"
+        function formatShortDate(s) {
+            if (!s) return '';
+            var d = new Date(String(s).replace(' ', 'T'));
+            if (isNaN(d.getTime())) return '';
+            var dd = ('0' + d.getDate()).slice(-2);
+            var mm = ('0' + (d.getMonth() + 1)).slice(-2);
+            return dd + '.' + mm + '.' + d.getFullYear();
+        }
+
         /* ─────────────────────────────────────────────
            Merge a document's pages[] into one continuous stream per column.
            New docs save a single page; legacy multi-page docs (with old
@@ -370,8 +427,9 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
             var FILE_ICO = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
 
             var DOWNLOAD_ICO = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>';
+            var EDIT_ICO     = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
             var DELETE_ICO   = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
-            var IMPORT_TAG_ICO = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>';
+            var IMPORT_TAG_ICO = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>';
             var CREATE_TAG_ICO = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
             var USER_ICO = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
 
@@ -389,15 +447,29 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
                         (isImported ? IMPORT_TAG_ICO + 'Импортиран' : CREATE_TAG_ICO + 'Креиран') +
                     '</span></div>';
 
-                // Bottom: who created the document.
-                var creator = doc.created_by_name ? escapeHtml(doc.created_by_name) : 'Непознат корисник';
-                var creatorRow = '<div class="doc-card-creator">' + USER_ICO + '<span>' + creator + '</span></div>';
+                // Bottom: who created the document + when.
+                var creator   = doc.created_by_name ? escapeHtml(doc.created_by_name) : 'Непознат корисник';
+                var dateStr   = formatShortDate(doc.created_at);
+                var dateLabel = (isImported ? 'Импортиран на ' : 'Креирано на ') + dateStr;
+                var creatorRow = '<div class="doc-card-meta-row">' +
+                        '<span class="doc-card-creator">' + USER_ICO + '<span>' + creator + '</span></span>' +
+                        (dateStr ? '<span class="doc-card-dot">&middot;</span>' +
+                                   '<span class="doc-card-date">' + escapeHtml(dateLabel) + '</span>' : '') +
+                    '</div>';
+
+                // Title-bar action icon: imported → download; editor → edit
+                // (pencil opens the editor, only for users who may manage it).
+                var actionBtn = isImported
+                    ? '<button class="btn-icon-color btn-download-doc" data-id="' + doc.id + '" title="' + dlTitle + '">' + DOWNLOAD_ICO + '</button>'
+                    : (canManageDoc(doc)
+                        ? '<button class="btn-icon-color btn-edit-doc" data-id="' + doc.id + '" title="Отвори во уредувач">' + EDIT_ICO + '</button>'
+                        : '');
 
                 var titleBar =
                     '<div class="doc-card-title-bar">' +
                         '<span class="doc-card-ico" aria-hidden="true">' + FILE_ICO + '</span>' +
                         '<span class="doc-card-name" title="' + escapeHtml(doc.name) + '">' + escapeHtml(doc.name) + '</span>' +
-                        '<button class="btn-icon-color btn-download-doc" data-id="' + doc.id + '" title="' + dlTitle + '">' + DOWNLOAD_ICO + '</button>' +
+                        actionBtn +
                         deleteBtn +
                     '</div>';
 
@@ -417,7 +489,7 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
                         '</div>' +
                         creatorRow +
                         '<div class="doc-card-footer">' +
-                            '<button class="btn-new-client btn-download-doc" data-id="' + doc.id + '" style="flex:1;justify-content:center">Преземи</button>' +
+                            '<button class="btn-new-client btn-download-doc" data-id="' + doc.id + '" style="flex:1;justify-content:center">' + DOWNLOAD_ICO + 'Преземи</button>' +
                         '</div>' +
                     '</div>';
                     return;
@@ -431,9 +503,7 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
                     '</div>' +
                     creatorRow +
                     '<div class="doc-card-footer">' +
-                        (canManageDoc(doc)
-                            ? '<a href="kreraj-dokument.php?doc_id=' + doc.id + '&template_id=' + TEMPLATE.id + '" class="btn-new-client doc-card-open" style="flex:1;justify-content:center">Отвори</a>'
-                            : '<span class="doc-card-readonly" style="flex:1;text-align:center">Само за преглед</span>') +
+                        '<button class="btn-new-client btn-download-doc" data-id="' + doc.id + '" style="flex:1;justify-content:center">' + DOWNLOAD_ICO + 'Преземи</button>' +
                     '</div>' +
                 '</div>';
             });
@@ -724,6 +794,14 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
             }
         });
 
+        // Pencil (edit) icon → open the document in the editor.
+        document.getElementById('docCardsGrid').addEventListener('click', function (e) {
+            var btn = e.target.closest('.btn-edit-doc');
+            if (!btn) return;
+            var docId = btn.getAttribute('data-id');
+            window.location.href = 'kreraj-dokument.php?doc_id=' + docId + '&template_id=' + TEMPLATE.id;
+        });
+
         /* ─────────────────────────────────────────────
            Imported-file download (fill [placeholders] → file)
            Opens a two-pane modal: value fields + a live document preview.
@@ -947,8 +1025,30 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
             if (!nameInp.value.trim()) nameInp.value = f.name.replace(/\.[^.]+$/, '');
         }
 
-        var btnImport = document.getElementById('btnImportDoc');
-        if (btnImport) btnImport.addEventListener('click', openImportModal);
+        /* -- "Нов документ" dropdown (blank vs import) -- */
+        (function () {
+            var dd   = document.getElementById('newDocDropdown');
+            var btn  = document.getElementById('btnNewDoc');
+            var menu = document.getElementById('newDocMenu');
+            if (!dd || !btn || !menu) return;
+
+            function openMenu()  { menu.hidden = false; btn.setAttribute('aria-expanded', 'true'); document.addEventListener('mousedown', onOutside, true); }
+            function closeMenu() { menu.hidden = true;  btn.setAttribute('aria-expanded', 'false'); document.removeEventListener('mousedown', onOutside, true); }
+            function onOutside(e) { if (!dd.contains(e.target)) closeMenu(); }
+
+            btn.addEventListener('click', function () { menu.hidden ? openMenu() : closeMenu(); });
+            document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+
+            document.getElementById('ndCreate').addEventListener('click', function () {
+                closeMenu();
+                window.location.href = 'kreraj-dokument.php?template_id=' + TEMPLATE.id;
+            });
+            document.getElementById('ndImport').addEventListener('click', function () {
+                closeMenu();
+                openImportModal();
+            });
+        }());
+
         document.getElementById('importClose').addEventListener('click', closeImportModal);
         document.getElementById('importCancel').addEventListener('click', closeImportModal);
         document.getElementById('importModal').addEventListener('click', function (e) {
