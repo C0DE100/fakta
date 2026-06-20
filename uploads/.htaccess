@@ -1,0 +1,13 @@
+# Block all direct web access to uploaded files.
+# They are served only through api/document_api.php after an auth + company check.
+
+# Apache 2.4+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+
+# Apache 2.2
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

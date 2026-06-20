@@ -1,0 +1,4 @@
+# Keep the folder (and its .htaccess) but never commit uploaded user files.
+*
+!.htaccess
+!.gitignore

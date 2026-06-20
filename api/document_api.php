@@ -2,6 +2,7 @@
 
 define('FAKTA_API', true);
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../classes/DocxFiller.php';
 
 require_login();
 
@@ -33,6 +34,30 @@ function praktikant_guard_document(PDO $pdo, int $documentId, int $companyId, in
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Можете да менувате само документи што вие сте ги креирале.']);
     return false;
+}
+
+/** Recursively delete a directory and its contents (best-effort). */
+function rrmdir(string $dir): void
+{
+    if (!is_dir($dir)) {
+        return;
+    }
+    foreach (scandir($dir) ?: [] as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+        $path = $dir . DIRECTORY_SEPARATOR . $entry;
+        is_dir($path) ? rrmdir($path) : @unlink($path);
+    }
+    @rmdir($dir);
+}
+
+/** Sanitize a document name into a safe download filename base (Cyrillic-safe). */
+function safe_filename(string $name): string
+{
+    $name = preg_replace('/[\/\\\\:*?"<>|]+/u', ' ', $name);   // strip path/illegal chars
+    $name = trim(preg_replace('/\s+/u', ' ', $name));
+    return $name !== '' ? $name : 'document';
 }
 
 try {
@@ -154,10 +179,175 @@ try {
             if (!praktikant_guard_document($pdo, $id, $companyId, $userId, $isPraktikant)) {
                 exit;
             }
+            // For imported docs, delete the uploaded original + .docx master too.
+            $fstmt = $pdo->prepare('SELECT file_path, orig_path FROM documents WHERE id = ? AND company_id = ?');
+            $fstmt->execute([$id, $companyId]);
+            if ($frow = $fstmt->fetch()) {
+                foreach ([$frow['file_path'] ?? null, $frow['orig_path'] ?? null] as $rel) {
+                    if ($rel) {
+                        @unlink(UPLOADS_DIR . '/' . $rel);
+                    }
+                }
+            }
             $stmt = $pdo->prepare('DELETE FROM documents WHERE id = ? AND company_id = ?');
             $stmt->execute([$id, $companyId]);
             echo json_encode(['success' => true]);
             break;
+
+        // ── Imported files ([placeholder] documents) ─────────────────────────
+        case 'import':
+            $templateId = (int) ($_POST['template_id'] ?? 0);
+            $name       = trim($_POST['name'] ?? '');
+            if ($templateId <= 0 || $name === '') {
+                echo json_encode(['success' => false, 'message' => 'Невалидни параметри.']);
+                exit;
+            }
+
+            // The template must belong to the current company (everyone, incl.
+            // praktikant, may add documents — same rule as 'create').
+            $own = $pdo->prepare('SELECT 1 FROM templates WHERE id = ? AND company_id = ?');
+            $own->execute([$templateId, $companyId]);
+            if (!$own->fetchColumn()) {
+                echo json_encode(['success' => false, 'message' => 'Шаблонот не е пронајден.']);
+                exit;
+            }
+
+            if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+                echo json_encode(['success' => false, 'message' => 'Датотеката не е прикачена правилно.']);
+                exit;
+            }
+            $file = $_FILES['file'];
+            if ($file['size'] > 25 * 1024 * 1024) {
+                echo json_encode(['success' => false, 'message' => 'Датотеката е преголема (макс. 25MB).']);
+                exit;
+            }
+            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if ($ext !== 'docx') {
+                echo json_encode(['success' => false, 'message' => 'Дозволени се само .docx датотеки.']);
+                exit;
+            }
+
+            $dir = UPLOADS_DIR . '/imported/' . $companyId;
+            if (!is_dir($dir) && !@mkdir($dir, 0775, true)) {
+                echo json_encode(['success' => false, 'message' => 'Не може да се креира папка за прикачување.']);
+                exit;
+            }
+
+            $uid     = bin2hex(random_bytes(8));
+            $fileRel = 'imported/' . $companyId . '/' . $uid . '.docx';
+            $fileAbs = UPLOADS_DIR . '/' . $fileRel;
+            if (!move_uploaded_file($file['tmp_name'], $fileAbs)) {
+                echo json_encode(['success' => false, 'message' => 'Не може да се зачува датотеката.']);
+                exit;
+            }
+
+            try {
+                $placeholders = DocxFiller::extractPlaceholders($fileAbs);
+            } catch (Throwable $e) {
+                @unlink($fileAbs);
+                echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                exit;
+            }
+
+            $stmt = $pdo->prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 FROM documents WHERE template_id = ? AND company_id = ?');
+            $stmt->execute([$templateId, $companyId]);
+            $sortOrder = (int) $stmt->fetchColumn();
+
+            $stmt = $pdo->prepare(
+                'INSERT INTO documents
+                   (company_id, template_id, created_by, kind, name, is_split, pages, variables,
+                    file_path, orig_path, file_ext, sort_order, created_at, updated_at)
+                 VALUES (?, ?, ?, \'imported\', ?, 0, \'[]\', ?, ?, ?, \'docx\', ?, NOW(), NOW())'
+            );
+            $stmt->execute([
+                $companyId, $templateId, $userId ?: null, $name,
+                json_encode($placeholders, JSON_UNESCAPED_UNICODE),
+                $fileRel, $fileRel, $sortOrder,
+            ]);
+            echo json_encode([
+                'success'      => true,
+                'id'           => (int) $pdo->lastInsertId(),
+                'placeholders' => $placeholders,
+            ]);
+            break;
+
+        case 'download_filled':
+            $id = (int) ($_POST['id'] ?? $_GET['id'] ?? 0);
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Невалиден ID.']);
+                exit;
+            }
+            $stmt = $pdo->prepare("SELECT * FROM documents WHERE id = ? AND company_id = ? AND kind = 'imported'");
+            $stmt->execute([$id, $companyId]);
+            $doc = $stmt->fetch();
+            if (!$doc) {
+                echo json_encode(['success' => false, 'message' => 'Документот не е пронајден.']);
+                exit;
+            }
+            $masterAbs = UPLOADS_DIR . '/' . $doc['file_path'];
+            if (!is_file($masterAbs)) {
+                echo json_encode(['success' => false, 'message' => 'Изворната датотека недостасува.']);
+                exit;
+            }
+
+            $values = json_decode($_POST['values'] ?? '{}', true);
+            if (!is_array($values)) {
+                $values = [];
+            }
+
+            $tmpDir = sys_get_temp_dir() . '/fakta_fill_' . bin2hex(random_bytes(6));
+            @mkdir($tmpDir, 0775, true);
+            try {
+                $sendPath = $tmpDir . '/filled.docx';
+                DocxFiller::fill($masterAbs, $sendPath, $values);
+            } catch (Throwable $e) {
+                rrmdir($tmpDir);
+                http_response_code(500);
+                echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                exit;
+            }
+
+            $dlName = safe_filename($doc['name']) . '.docx';
+            $ascii  = preg_replace('/[^\x20-\x7E]/', '_', $dlName);
+
+            // Override the JSON content-type set at the top with the real file.
+            header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+            header('Content-Disposition: attachment; filename="' . $ascii . '"; '
+                . "filename*=UTF-8''" . rawurlencode($dlName));
+            header('Content-Length: ' . filesize($sendPath));
+            header('Cache-Control: no-store');
+            readfile($sendPath);
+            rrmdir($tmpDir);
+            exit;
+
+        case 'master':
+            // Stream the unfilled .docx master inline, for the client-side
+            // (mammoth.js) live preview. Company-scoped, imported docs only.
+            $id = (int) ($_GET['id'] ?? $_POST['id'] ?? 0);
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Невалиден ID.']);
+                exit;
+            }
+            $stmt = $pdo->prepare("SELECT file_path FROM documents WHERE id = ? AND company_id = ? AND kind = 'imported'");
+            $stmt->execute([$id, $companyId]);
+            $row = $stmt->fetch();
+            if (!$row) {
+                http_response_code(404);
+                echo json_encode(['success' => false, 'message' => 'Документот не е пронајден.']);
+                exit;
+            }
+            $masterAbs = UPLOADS_DIR . '/' . $row['file_path'];
+            if (!is_file($masterAbs)) {
+                http_response_code(404);
+                echo json_encode(['success' => false, 'message' => 'Изворната датотека недостасува.']);
+                exit;
+            }
+            header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+            header('Content-Disposition: inline');
+            header('Content-Length: ' . filesize($masterAbs));
+            header('Cache-Control: private, max-age=0');
+            readfile($masterAbs);
+            exit;
 
         default:
             echo json_encode(['success' => false, 'message' => 'Непозната акција.']);

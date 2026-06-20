@@ -624,9 +624,12 @@
     // Narrow allDocs to the active view (one doc, or the whole template), seed
     // any missing variable values, then render.
     function applyDocFilterAndBuild() {
-        state.docs = state.docId != null
+        state.docs = (state.docId != null
             ? (state.allDocs || []).filter(function (d) { return parseInt(d.id, 10) === parseInt(state.docId, 10); })
-            : (state.allDocs || []);
+            : (state.allDocs || []))
+            // Imported (uploaded-file) docs have no Quill preview — they're
+            // downloaded per-card from pregled-shablon.php, not in this workspace.
+            .filter(function (d) { return d.kind !== 'imported'; });
         Object.keys(getVarsFromDocs(state.docs)).forEach(function (n) {
             if (state.values[n] === undefined) state.values[n] = '';
         });

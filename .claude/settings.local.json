@@ -35,7 +35,22 @@
       "Bash(php -l c:/xampp/htdocs/fakta/kreraj-dokument.php)",
       "Bash(php -l c:/xampp/htdocs/fakta/tipski-dokumenti.php)",
       "Bash(node --check c:/xampp/htdocs/fakta/js/draft-workspace.js)",
-      "Bash(php -l c:/xampp/htdocs/fakta/pregled-shablon.php)"
+      "Bash(php -l c:/xampp/htdocs/fakta/pregled-shablon.php)",
+      "PowerShell($paths = @\\(\"C:\\\\Program Files\\\\LibreOffice\\\\program\\\\soffice.exe\",\"C:\\\\Program Files \\(x86\\)\\\\LibreOffice\\\\program\\\\soffice.exe\"\\); foreach\\($p in $paths\\){ if\\(Test-Path $p\\){ \"FOUND: $p\" } }; $cmd = Get-Command soffice -ErrorAction SilentlyContinue; if\\($cmd\\){ \"PATH: \" + $cmd.Source } else { \"soffice not on PATH\" })",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\seed\\\\migrate_documents_imported.php\")",
+      "PowerShell($files = @\\(\"api\\\\document_api.php\",\"classes\\\\DocxFiller.php\",\"config.php\",\"seed\\\\migrate_documents_imported.php\"\\); foreach\\($f in $files\\){ $p = \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\$f\"; & \"C:\\\\xampp\\\\php\\\\php.exe\" -l $p })",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" \"C:\\\\tmp\\\\test_docxfiller.php\")",
+      "PowerShell($php = \"C:\\\\xampp\\\\php\\\\php.exe\"; \"INI: \" + \\(& $php --ini | Select-String 'Loaded'\\); \"--- zip in -m ? ---\"; & $php -m | Select-String -Pattern 'zip' ; \"--- ext_dir has php_zip.dll ? ---\"; Get-ChildItem \"C:\\\\xampp\\\\php\\\\ext\\\\php_zip.dll\" -ErrorAction SilentlyContinue | Select-Object Name; \"--- ini zip lines ---\"; Select-String -Path \"C:\\\\xampp\\\\php\\\\php.ini\" -Pattern 'php_zip|extension=zip')",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -d extension=zip \"C:\\\\tmp\\\\test_docxfiller.php\")",
+      "Bash(grep -n \"^extension=\\\\|^;extension=zip\\\\|extension=gd\\\\|extension=mysqli\" \"C:/xampp/php/php.ini\" | head -30)",
+      "Read(//c/xampp/php/**)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -r \"require 'C:/xampp/htdocs/fakta/config.php'; require 'C:/xampp/htdocs/fakta/classes/Database.php'; $p=\\(new Database\\(DB_HOST,DB_NAME,DB_USER,DB_PASS\\)\\)->getConnection\\(\\); foreach\\($p->query\\('SHOW COLUMNS FROM documents'\\) as $c\\){ echo $c['Field'].' : '.$c['Type'].\\\\\"\\\\n\\\\\"; }\")",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" \"C:\\\\tmp\\\\showcols.php\")",
+      "PowerShell($word = New-Object -ComObject Word.Application -ErrorAction SilentlyContinue; if\\($word\\){ \"MS Word COM available: \" + $word.Version; $word.Quit\\(\\) } else { \"MS Word not available\" })",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\api\\\\document_api.php\")",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\pregled-shablon.php\")",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\classes\\\\DocxFiller.php\")",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\config.php\")"
     ],
     "additionalDirectories": [
       "\\tmp"
