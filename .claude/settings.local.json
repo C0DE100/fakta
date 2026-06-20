@@ -29,7 +29,8 @@
       "Bash(awk '/^    \\\\\\(function \\\\\\(\\\\\\) \\\\{/{f=1} f{print} /^    \\\\}\\\\\\(\\\\\\)\\\\\\);/{if\\(f\\)exit}' pregled-shablon.php)",
       "Bash(cd /c/xampp/htdocs/fakta *)",
       "Bash(node --check /tmp/p.js)",
-      "Bash(node --check js/draft-workspace.js)"
+      "Bash(node --check js/draft-workspace.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost/fakta/pregled-shablon.php?id=1\")"
     ],
     "additionalDirectories": [
       "\\tmp"

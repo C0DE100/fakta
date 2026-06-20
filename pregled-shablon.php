@@ -370,10 +370,24 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
             zone.appendChild(buildPrintTable(mergePages(doc.pages), !!parseInt(doc.is_split), values));
         }
 
+        // Measure a header/footer's rendered height at the printed content width
+        // (A4 21cm − 2·3cm margins = 15cm). Used to reserve exactly the right
+        // space for it per page (must match the editor's HF_GAP_CM = 0.5cm).
+        function measureHFHeight(html) {
+            var m = document.createElement('div');
+            m.className = 'page-header-editor';
+            m.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;width:15cm;';
+            m.innerHTML = html || '';
+            document.body.appendChild(m);
+            var h = m.offsetHeight;
+            m.remove();
+            return h;
+        }
+
         // The header/footer are pinned to the top/bottom of EVERY printed page
         // via position:fixed (they repeat per page). The table's <thead>/<tfoot>
-        // hold empty spacers of the same height so the flowing <tbody> content
-        // never runs under them. <tbody> breaks across A4 pages.
+        // hold spacers sized to the header/footer height (+gap) so the flowing
+        // <tbody> never runs under them. <tbody> breaks across A4 pages.
         function buildPrintTable(page, split, values) {
             var cols = split ? 2 : 1;
             var wrap = document.createElement('div');
@@ -398,6 +412,7 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
                 var htr = document.createElement('tr');
                 var htd = document.createElement('td'); htd.colSpan = cols;
                 var hsp = document.createElement('div'); hsp.className = 'doc-print-spacer doc-print-spacer-h';
+                hsp.style.height = 'calc(' + measureHFHeight(page.header) + 'px + 0.5cm)';
                 htd.appendChild(hsp); htr.appendChild(htd); thead.appendChild(htr);
                 table.appendChild(thead);
             }
@@ -406,6 +421,7 @@ $backUrl = 'tipski-dokumenti.php' . (!empty($template['folder_id']) ? ('?folder=
                 var ftr = document.createElement('tr');
                 var ftd = document.createElement('td'); ftd.colSpan = cols;
                 var fsp = document.createElement('div'); fsp.className = 'doc-print-spacer doc-print-spacer-f';
+                fsp.style.height = 'calc(' + measureHFHeight(page.footer) + 'px + 0.5cm)';
                 ftd.appendChild(fsp); ftr.appendChild(ftd); tfoot.appendChild(ftr);
                 table.appendChild(tfoot);
             }

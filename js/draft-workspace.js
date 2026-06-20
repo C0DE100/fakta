@@ -227,7 +227,10 @@
             state.values[name] = inp.value;
             saveVals();
             applyValueToChips(name);
+            scheduleBreaks();          // chip text changed → line wrapping may shift
         });
+
+        window.addEventListener('resize', scheduleBreaks);
 
         mounted = true;
     }
@@ -305,6 +308,87 @@
         });
     }
 
+    /* ── page-break lines (same logic/units as the editor) ── */
+    var HF_GAP_CM = 0.5, _cmPx = 0;
+    function cmPx() {
+        if (_cmPx) return _cmPx;
+        var p = document.createElement('div');
+        p.style.cssText = 'position:absolute;visibility:hidden;height:10cm;';
+        document.body.appendChild(p); _cmPx = (p.offsetHeight || 378) / 10; p.remove();
+        return _cmPx;
+    }
+    // Per-page content height = A4 27.7cm (minus @page margins) − measured
+    // header/footer height (+gap), matching the print reservation.
+    function blockBudgetPx(block) {
+        var cm = cmPx();
+        var hasH = block._headerEl && block._headerEl.textContent.trim() !== '';
+        var hasF = block._footerEl && block._footerEl.textContent.trim() !== '';
+        var resH = hasH ? block._headerEl.offsetHeight + HF_GAP_CM * cm : 0;
+        var resF = hasF ? block._footerEl.offsetHeight + HF_GAP_CM * cm : 0;
+        return Math.round(27.7 * cm - resH - resF);
+    }
+    // Per-block line boxes (across blocks getClientRects returns whole-block
+    // rects, so measure block by block); empty blocks fall back to their box.
+    function collectLines(root) {
+        var rootTop = root.getBoundingClientRect().top, lines = [], blocks = root.children;
+        for (var b = 0; b < blocks.length; b++) {
+            var rng = document.createRange();
+            rng.selectNodeContents(blocks[b]);
+            var rects = rng.getClientRects();
+            if (rects.length) {
+                for (var j = 0; j < rects.length; j++) {
+                    if (rects[j].height < 1) continue;
+                    lines.push({ top: rects[j].top - rootTop, bottom: rects[j].bottom - rootTop });
+                }
+            } else {
+                var br = blocks[b].getBoundingClientRect();
+                lines.push({ top: br.top - rootTop, bottom: br.bottom - rootTop });
+            }
+        }
+        return lines;
+    }
+    // Break before the first line that would overflow the page (no line is split).
+    function computeBreaks(root, budget) {
+        var lines = collectLines(root), breaks = [], limit = budget, prevBottom = 0;
+        for (var i = 0; i < lines.length; i++) {
+            if (lines[i].bottom > limit + 1) {
+                var y = (lines[i].top > prevBottom) ? (prevBottom + lines[i].top) / 2 : lines[i].top;
+                breaks.push(y);
+                limit = lines[i].top + budget;
+            }
+            prevBottom = lines[i].bottom;
+        }
+        return breaks;
+    }
+    function drawDocBreaks(block) {
+        if (!block || !block._guidesEl || !block._doc) return;
+        var split = !!parseInt(block._doc.is_split);
+        var budget = blockBudgetPx(block);
+        var breaks = split
+            ? (function () {
+                var lb = computeBreaks(block._qLeft.root, budget);
+                var rb = computeBreaks(block._qRight.root, budget);
+                return lb.length >= rb.length ? lb : rb;
+              }())
+            : computeBreaks(block._qSingle.root, budget);
+        var html = '';
+        for (var i = 0; i < breaks.length; i++) {
+            html += '<div class="doc-page-break" style="top:' + Math.round(breaks[i]) + 'px">' +
+                        '<span class="doc-page-break-num">Крај на страница ' + (i + 1) + '</span>' +
+                    '</div>';
+        }
+        block._guidesEl.innerHTML = html;
+    }
+    function redrawAllBreaks() {
+        var host = document.getElementById('wsPreview');
+        if (host) [].forEach.call(host.querySelectorAll('.ws-doc-block'), drawDocBreaks);
+    }
+    var _breakTimer = null;
+    function scheduleBreaks() {
+        clearTimeout(_breakTimer);
+        _breakTimer = setTimeout(redrawAllBreaks, 150);
+    }
+
     /* ── build the editable preview ───────────────────────── */
     // Allowed formats — keep pastes clean (same whitelist as the editor).
     var ALLOWED_FORMATS = [
@@ -320,6 +404,7 @@
         q.on('text-change', function (d, o, source) {
             if (source !== 'user') return;
             applyChipsInEl(q.root);
+            scheduleBreaks();
             if (block && block._doc) scheduleDocSave(block._doc, block);
         });
         return q;
@@ -359,6 +444,7 @@
                     '<div class="doc-editor-single"><div class="q-single"></div></div>' +
                     '<div class="doc-editor-split"><div class="doc-col"><div class="q-left"></div></div>' +
                         '<div class="doc-col-divider"></div><div class="doc-col"><div class="q-right"></div></div></div>' +
+                    '<div class="doc-page-guides"></div>' +
                 '</div>' +
                 '<div class="doc-page-footer"><div class="page-footer-editor" contenteditable="true" spellcheck="false" data-placeholder="Подножје..."></div></div>';
             pagesHost.appendChild(sheet);
@@ -370,8 +456,9 @@
             fEl.innerHTML = page.footer || '';
             block._headerEl = hEl;
             block._footerEl = fEl;
-            hEl.addEventListener('input', function () { scheduleDocSave(doc, block); });
-            fEl.addEventListener('input', function () { scheduleDocSave(doc, block); });
+            block._guidesEl = sheet.querySelector('.doc-page-guides');
+            hEl.addEventListener('input', function () { scheduleDocSave(doc, block); scheduleBreaks(); });
+            fEl.addEventListener('input', function () { scheduleDocSave(doc, block); scheduleBreaks(); });
 
             if (split) {
                 block._qLeft  = makeWsQuill(sheet.querySelector('.q-left'),  page.left,  block);
@@ -384,6 +471,9 @@
             host.appendChild(block);
         });
         applyAllValues();
+        // Draw the page-break lines once the sheets have laid out.
+        redrawAllBreaks();
+        setTimeout(redrawAllBreaks, 250);
     }
 
     function renderVarFields() {
@@ -413,10 +503,24 @@
         zone.appendChild(buildPrintTable(mergePages(doc.pages), !!parseInt(doc.is_split), values));
     }
 
+    // Measure a header/footer's rendered height at the printed content width
+    // (A4 21cm − 2·3cm margins = 15cm), to reserve exactly the right space for it
+    // per page (gap must match the editor's HF_GAP_CM = 0.5cm).
+    function measureHFHeight(html) {
+        var m = document.createElement('div');
+        m.className = 'page-header-editor';
+        m.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;width:15cm;';
+        m.innerHTML = html || '';
+        document.body.appendChild(m);
+        var h = m.offsetHeight;
+        m.remove();
+        return h;
+    }
+
     // The header/footer are pinned to the top/bottom of EVERY printed page via
     // position:fixed (they repeat per page). The table's <thead>/<tfoot> hold
-    // empty spacers of the same height so the flowing <tbody> never runs under
-    // them. <tbody> breaks across A4 pages.
+    // spacers sized to the header/footer height (+gap) so the flowing <tbody>
+    // never runs under them. <tbody> breaks across A4 pages.
     function buildPrintTable(page, split, values) {
         var cols = split ? 2 : 1;
         var wrap = document.createElement('div');
@@ -441,6 +545,7 @@
             var htr = document.createElement('tr');
             var htd = document.createElement('td'); htd.colSpan = cols;
             var hsp = document.createElement('div'); hsp.className = 'doc-print-spacer doc-print-spacer-h';
+            hsp.style.height = 'calc(' + measureHFHeight(page.header) + 'px + 0.5cm)';
             htd.appendChild(hsp); htr.appendChild(htd); thead.appendChild(htr);
             table.appendChild(thead);
         }
@@ -449,6 +554,7 @@
             var ftr = document.createElement('tr');
             var ftd = document.createElement('td'); ftd.colSpan = cols;
             var fsp = document.createElement('div'); fsp.className = 'doc-print-spacer doc-print-spacer-f';
+            fsp.style.height = 'calc(' + measureHFHeight(page.footer) + 'px + 0.5cm)';
             ftd.appendChild(fsp); ftr.appendChild(ftd); tfoot.appendChild(ftr);
             table.appendChild(tfoot);
         }

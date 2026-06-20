@@ -582,12 +582,20 @@ foreach ($templateVarMap as $name => $docNames) {
             p.remove();
             return _cmPx;
         }
+        // Gap reserved between the header/footer and the body on a printed page.
+        // MUST match HF_GAP_CM in the print builders (pregled-shablon.php /
+        // js/draft-workspace.js) so the editor's break lines line up with print.
+        var HF_GAP_CM = 0.5;
         function pageBudgetPx() {
             var cm = cmPx();
+            // The editor header/footer fields are rendered at the same width
+            // (15cm) and font as the printed running header/footer, so their
+            // measured height is what print reserves (height + gap) per page.
             var hasHeader = headerEl && headerEl.textContent.trim() !== '';
             var hasFooter = footerEl && footerEl.textContent.trim() !== '';
-            var budgetCm = 27.7 - (hasHeader ? 1.5 : 0) - (hasFooter ? 1.5 : 0);
-            return Math.round(budgetCm * cm);
+            var resH = hasHeader ? headerEl.offsetHeight + HF_GAP_CM * cm : 0;
+            var resF = hasFooter ? footerEl.offsetHeight + HF_GAP_CM * cm : 0;
+            return Math.round(27.7 * cm - resH - resF);
         }
 
         // Collect the Y position of every rendered LINE box (relative to the
