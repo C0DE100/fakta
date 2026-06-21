@@ -230,6 +230,7 @@
             if (!inp) return;
             var name = inp.getAttribute('data-var');
             state.values[name] = inp.value;
+            if (inp.value.trim()) inp.classList.remove('field-missing');
             saveVals();
             applyValueToChips(name);
             applyImportedValues();     // also live-fill imported .docx previews
@@ -822,14 +823,44 @@
     function download() {
         var ordered = state.orderedDocs || [];
         if (!ordered.length) return;
-        flushSaves();
-        // Walk every doc in document order: editor → print to PDF (waits for the
-        // print dialog to close), imported → fill & download the .docx. Sequential
-        // so the order is respected and dialogs don't pile up.
-        var i = 0;
+
+        // Warn if any placeholder/variable is left empty (prints as [field]).
+        var allNames = Object.keys(getVarsFromDocs(ordered));
+        var missing = allNames.filter(function (n) { return !state.values[n] || !String(state.values[n]).trim(); });
+        document.querySelectorAll('#wsVarFields .ws-var-input').forEach(function (inp) {
+            inp.classList.toggle('field-missing', missing.indexOf(inp.getAttribute('data-var')) !== -1);
+        });
+
+        var run = function () { flushSaves(); runDownloads(ordered); };
+        if (missing.length && window.confirmDialog) {
+            window.confirmDialog({
+                title: 'Празни полиња',
+                message: missing.length + ' ' + (missing.length === 1 ? 'поле не е пополнето и ќе се појави' : 'полиња не се пополнети и ќе се појават') +
+                    ' како [поле] во документите. Сакате да продолжите?',
+                confirmText: 'Преземи сепак',
+                cancelText: 'Назад',
+                onConfirm: run
+            });
+        } else {
+            run();
+        }
+    }
+
+    // Walk every doc in document order: editor → print to PDF (waits for the
+    // print dialog to close), imported → fill & download the .docx. Sequential
+    // so the order is respected and dialogs don't pile up. Shows progress.
+    function runDownloads(ordered) {
+        var total = ordered.length, i = 0;
         (function next() {
-            if (i >= ordered.length) return;
-            var doc = ordered[i++];
+            if (i >= ordered.length) {
+                markSaved('Готово');
+                if (window.toast) window.toast('Преземањето е завршено.', 'success');
+                setTimeout(function () { markSaved(''); }, 2500);
+                return;
+            }
+            var doc = ordered[i];
+            markSaved('Документ ' + (i + 1) + ' од ' + total + '…');
+            i++;
             var step = doc.kind === 'imported'
                 ? downloadImportedFilled(doc, state.values)
                 : printDoc(doc, state.values);

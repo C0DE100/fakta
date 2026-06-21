@@ -130,7 +130,8 @@ try {
             break;
 
         case 'folder_delete':
-            // Ungroup the templates (keep them), then drop the folder.
+            // Hard-delete the folder AND everything inside it: every template in
+            // the folder, all their documents, and any imported files on disk.
             $id = (int) ($_POST['id'] ?? 0);
             if ($id <= 0) {
                 echo json_encode(['success' => false, 'message' => 'Невалиден ID.']);
@@ -139,8 +140,32 @@ try {
             if (!can_manage_folder($pdo, $id, $companyId, $userId, $isPraktikant)) {
                 exit;
             }
-            $stmt = $pdo->prepare('UPDATE templates SET folder_id = NULL WHERE folder_id = ? AND company_id = ?');
-            $stmt->execute([$id, $companyId]);
+
+            // Templates living in this folder.
+            $tstmt = $pdo->prepare('SELECT id FROM templates WHERE folder_id = ? AND company_id = ?');
+            $tstmt->execute([$id, $companyId]);
+            $tplIds = $tstmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if ($tplIds) {
+                $place = implode(',', array_fill(0, count($tplIds), '?'));
+
+                // Unlink uploaded files for any imported documents first.
+                $dstmt = $pdo->prepare("SELECT file_path, orig_path FROM documents WHERE company_id = ? AND template_id IN ($place)");
+                $dstmt->execute(array_merge([$companyId], $tplIds));
+                foreach ($dstmt->fetchAll() as $drow) {
+                    foreach ([$drow['file_path'] ?? null, $drow['orig_path'] ?? null] as $rel) {
+                        if ($rel) {
+                            @unlink(UPLOADS_DIR . '/' . $rel);
+                        }
+                    }
+                }
+
+                $del = $pdo->prepare("DELETE FROM documents WHERE company_id = ? AND template_id IN ($place)");
+                $del->execute(array_merge([$companyId], $tplIds));
+                $del = $pdo->prepare("DELETE FROM templates WHERE company_id = ? AND id IN ($place)");
+                $del->execute(array_merge([$companyId], $tplIds));
+            }
+
             $stmt = $pdo->prepare('DELETE FROM template_folders WHERE id = ? AND company_id = ?');
             $stmt->execute([$id, $companyId]);
             echo json_encode(['success' => true]);

@@ -50,7 +50,12 @@
       "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\api\\\\document_api.php\")",
       "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\pregled-shablon.php\")",
       "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\classes\\\\DocxFiller.php\")",
-      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\config.php\")"
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\config.php\")",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\tipski-dokumenti.php\")",
+      "PowerShell(node -c \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\js\\\\draft-workspace.js\" 2>&1)",
+      "Bash(node --check js/toast.js)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\includes\\\\nav.php\")",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\api\\\\template_api.php\")"
     ],
     "additionalDirectories": [
       "\\tmp"

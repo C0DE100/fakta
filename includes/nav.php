@@ -90,5 +90,7 @@ window.FAKTA_CO   = <?= json_encode((string)(function_exists('current_company_id
 window.FAKTA_ROLE = <?= json_encode((string)(function_exists('current_role') ? (current_role() ?? '') : '')) ?>;
 window.FAKTA_UID  = <?= json_encode((int)($navUser['id'] ?? 0)) ?>;
 </script>
+<!-- Global toast + confirm dialog helpers (window.toast / window.confirmDialog) -->
+<script src="js/toast.js" defer></script>
 <!-- Global "Користи шаблон" workspace, docked on every page -->
 <script src="js/draft-workspace.js" defer></script>

@@ -211,11 +211,13 @@ if (!empty($template['folder_id'])) {
                 <span class="modal-title">Импортирај документ</span>
                 <button class="modal-close" id="importClose">&times;</button>
             </div>
-            <p style="font-size:0.8125rem;color:#78716c;margin-bottom:1rem;">
-                Прикачи <strong>.docx</strong> (Word) датотека.
-                Местата што сакаш да се пополнуваат при преземање означи ги со загради во самиот документ, пр.
-                <code>[име]</code>, <code>[број]</code>.
-            </p>
+            <p style="font-size:0.8125rem;color:#78716c;margin-bottom:0.75rem;">Прикачи <strong>.docx</strong> (Word) датотека.</p>
+            <div class="import-tip">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>
+                <div class="import-tip-text">
+                    <strong>Важно:</strong> Прво отвори ја Word датотеката и означи ги местата што треба да се пополнуваат со <strong>средни загради</strong>, пр. <code>[име]</code>, <code>[број]</code>, <code>[датум]</code>. Само означените места ќе можат да се менуваат при преземање — без нив, документот ќе се презема како што е.
+                </div>
+            </div>
             <input type="text" id="importNameInput" class="field" placeholder="Назив на документот..." style="margin-bottom:0.75rem;" autocomplete="off">
             <label id="importDrop" for="importFileInput" class="import-drop">
                 <input type="file" id="importFileInput" accept=".docx" style="display:none">
@@ -256,6 +258,22 @@ if (!empty($template['folder_id'])) {
                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
                     Преземи
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: rename document -->
+    <div id="docRenameModal" class="modal-overlay" aria-hidden="true">
+        <div class="modal-box" style="max-width:22rem">
+            <div class="modal-header">
+                <span class="modal-title">Преименувај документ</span>
+                <button class="modal-close" id="docRenameClose">&times;</button>
+            </div>
+            <p style="font-size:0.8125rem;color:#78716c;margin-bottom:1rem;">Внеси нов назив за документот.</p>
+            <input type="text" id="docRenameInput" class="field" placeholder="Назив на документот..." style="margin-bottom:0.875rem;" autocomplete="off">
+            <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+                <button id="docRenameCancel" class="btn-secondary">Откажи</button>
+                <button id="docRenameConfirm" class="btn-new-client">Зачувај</button>
             </div>
         </div>
     </div>
@@ -428,6 +446,7 @@ if (!empty($template['folder_id'])) {
 
             var DOWNLOAD_ICO = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>';
             var EDIT_ICO     = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+            var KEBAB_ICO    = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>';
             var DELETE_ICO   = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
             var IMPORT_TAG_ICO = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>';
             var CREATE_TAG_ICO = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
@@ -436,10 +455,6 @@ if (!empty($template['folder_id'])) {
             var html = '';
             docs.forEach(function (doc) {
                 var isImported = doc.kind === 'imported';
-                var deleteBtn = canManageDoc(doc)
-                    ? '<button class="btn-icon-danger btn-delete-doc" data-id="' + doc.id + '" title="Избриши документ">' + DELETE_ICO + '</button>'
-                    : '';
-                var dlTitle = 'Преземи ' + ((isImported && doc.file_ext) ? doc.file_ext.toUpperCase() : 'PDF');
 
                 // Top label: imported vs created-in-editor.
                 var typeRow = '<div class="doc-card-tagrow">' +
@@ -457,20 +472,15 @@ if (!empty($template['folder_id'])) {
                                    '<span class="doc-card-date">' + escapeHtml(dateLabel) + '</span>' : '') +
                     '</div>';
 
-                // Title-bar action icon: imported → download; editor → edit
-                // (pencil opens the editor, only for users who may manage it).
-                var actionBtn = isImported
-                    ? '<button class="btn-icon-color btn-download-doc" data-id="' + doc.id + '" title="' + dlTitle + '">' + DOWNLOAD_ICO + '</button>'
-                    : (canManageDoc(doc)
-                        ? '<button class="btn-icon-color btn-edit-doc" data-id="' + doc.id + '" title="Отвори во уредувач">' + EDIT_ICO + '</button>'
-                        : '');
+                // All per-doc actions (open/download/rename/duplicate/delete) live
+                // in the kebab (⋯) menu — keeps the title bar clean.
+                var menuBtn = '<button class="btn-icon-color btn-doc-menu" data-id="' + doc.id + '" title="Повеќе">' + KEBAB_ICO + '</button>';
 
                 var titleBar =
                     '<div class="doc-card-title-bar">' +
                         '<span class="doc-card-ico" aria-hidden="true">' + FILE_ICO + '</span>' +
                         '<span class="doc-card-name" title="' + escapeHtml(doc.name) + '">' + escapeHtml(doc.name) + '</span>' +
-                        actionBtn +
-                        deleteBtn +
+                        menuBtn +
                     '</div>';
 
                 if (doc.kind === 'imported') {
@@ -803,6 +813,132 @@ if (!empty($template['folder_id'])) {
         });
 
         /* ─────────────────────────────────────────────
+           Kebab (⋯) menu: rename / duplicate
+        ───────────────────────────────────────────── */
+        var docMenuEl = null;
+        function closeDocMenu() {
+            if (docMenuEl) { docMenuEl.remove(); docMenuEl = null; }
+            document.removeEventListener('mousedown', onDocMenuOutside, true);
+        }
+        function onDocMenuOutside(e) {
+            if (docMenuEl && !docMenuEl.contains(e.target) && !e.target.closest('.btn-doc-menu')) closeDocMenu();
+        }
+        var MENU_OPEN_ICO   = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
+        var MENU_DL_ICO     = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>';
+        var MENU_PEN_ICO    = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+        var MENU_COPY_ICO   = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+        var MENU_TRASH_ICO  = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
+
+        function openDocMenu(btn, doc) {
+            closeDocMenu();
+            var canManage  = canManageDoc(doc);
+            var isImported = doc.kind === 'imported';
+            function item(act, ico, label, cls) {
+                return '<button type="button" class="doc-menu-item' + (cls ? ' ' + cls : '') + '" data-act="' + act + '">' + ico + label + '</button>';
+            }
+            var html = '';
+            // Primary action: editor → open in editor; imported → download .docx.
+            if (isImported)       html += item('downloaddocx', MENU_DL_ICO, 'Преземи DOCX');
+            else if (canManage)   html += item('open', MENU_OPEN_ICO, 'Отвори во уредувач');
+            if (canManage)        html += item('rename', MENU_PEN_ICO, 'Преименувај');
+            html += item('duplicate', MENU_COPY_ICO, 'Дуплирај');
+            if (canManage)        html += '<div class="doc-menu-sep"></div>' + item('delete', MENU_TRASH_ICO, 'Избриши', 'is-danger');
+
+            docMenuEl = document.createElement('div');
+            docMenuEl.className = 'doc-menu-popover';
+            docMenuEl.innerHTML = html;
+            document.body.appendChild(docMenuEl);
+            var r = btn.getBoundingClientRect();
+            var w = docMenuEl.offsetWidth || 192;
+            docMenuEl.style.top  = (r.bottom + 6) + 'px';
+            docMenuEl.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+            setTimeout(function () { document.addEventListener('mousedown', onDocMenuOutside, true); }, 0);
+
+            docMenuEl.addEventListener('click', function (e) {
+                var it = e.target.closest('.doc-menu-item');
+                if (!it) return;
+                var act = it.getAttribute('data-act');
+                closeDocMenu();
+                if (act === 'open') window.location.href = 'kreraj-dokument.php?doc_id=' + doc.id + '&template_id=' + TEMPLATE.id;
+                else if (act === 'downloaddocx') downloadImported(doc);
+                else if (act === 'rename') openRenameModal(doc);
+                else if (act === 'duplicate') duplicateDoc(doc);
+                else if (act === 'delete') openDocDeleteModal(doc.id);
+            });
+        }
+        document.getElementById('docCardsGrid').addEventListener('click', function (e) {
+            var btn = e.target.closest('.btn-doc-menu');
+            if (!btn) return;
+            e.stopPropagation();
+            var doc = findDoc(parseInt(btn.getAttribute('data-id'), 10));
+            if (doc) openDocMenu(btn, doc);
+        });
+        window.addEventListener('resize', closeDocMenu);
+        window.addEventListener('scroll', closeDocMenu, true);
+
+        /* ── Rename document ── */
+        var renameDocId = null;
+        function openRenameModal(doc) {
+            renameDocId = doc.id;
+            var inp = document.getElementById('docRenameInput');
+            inp.value = doc.name || '';
+            document.getElementById('docRenameModal').classList.add('open');
+            document.getElementById('docRenameModal').removeAttribute('aria-hidden');
+            document.body.classList.add('modal-open');
+            setTimeout(function () { inp.focus(); inp.select(); }, 50);
+        }
+        function closeRenameModal() {
+            var m = document.getElementById('docRenameModal');
+            if (m.contains(document.activeElement)) document.activeElement.blur();
+            m.classList.remove('open');
+            m.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('modal-open');
+            renameDocId = null;
+        }
+        document.getElementById('docRenameClose').addEventListener('click', closeRenameModal);
+        document.getElementById('docRenameCancel').addEventListener('click', closeRenameModal);
+        document.getElementById('docRenameModal').addEventListener('click', function (e) { if (e.target === this) closeRenameModal(); });
+        document.getElementById('docRenameInput').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter')  { e.preventDefault(); document.getElementById('docRenameConfirm').click(); }
+            if (e.key === 'Escape') closeRenameModal();
+        });
+        document.getElementById('docRenameConfirm').addEventListener('click', function () {
+            var name = document.getElementById('docRenameInput').value.trim();
+            if (!name || !renameDocId) { document.getElementById('docRenameInput').focus(); return; }
+            var id = renameDocId;
+            var btn = this;
+            btn.disabled = true; btn.textContent = 'Зачувува...';
+            var params = new URLSearchParams({ action: 'rename', id: id, name: name });
+            fetch('api/document_api.php', { method: 'POST', body: params })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res.success) { toast(res.message || 'Грешка при зачувување.', 'error'); return; }
+                    var doc = findDoc(id);
+                    if (doc) doc.name = name;
+                    closeRenameModal();
+                    renderDocCards();
+                    toast('Документот е преименуван.', 'success');
+                })
+                .catch(function () { toast('Грешка при поврзување.', 'error'); })
+                .finally(function () { btn.disabled = false; btn.textContent = 'Зачувај'; });
+        });
+
+        /* ── Duplicate document ── */
+        function duplicateDoc(doc) {
+            toast('Се дуплира…', 'info', { duration: 1500 });
+            var params = new URLSearchParams({ action: 'duplicate', id: doc.id });
+            fetch('api/document_api.php', { method: 'POST', body: params })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res.success || !res.data) { toast(res.message || 'Грешка при дуплирање.', 'error'); return; }
+                    DOCS.push(res.data);
+                    renderDocCards();
+                    toast('Документот е дуплиран.', 'success');
+                })
+                .catch(function () { toast('Грешка при поврзување.', 'error'); });
+        }
+
+        /* ─────────────────────────────────────────────
            Imported-file download (fill [placeholders] → file)
            Opens a two-pane modal: value fields + a live document preview.
            docx-preview (client-side) renders the .docx master with real
@@ -934,6 +1070,7 @@ if (!empty($template['folder_id'])) {
             if (!inp) return;
             var name = inp.getAttribute('data-var');
             fillState.values[name] = inp.value;
+            if (inp.value.trim()) inp.classList.remove('field-missing');
             applyPreviewValue(name);
         });
 
@@ -952,8 +1089,26 @@ if (!empty($template['folder_id'])) {
         document.getElementById('fillPreviewConfirm').addEventListener('click', function () {
             var doc = fillState.doc;
             if (!doc) return;
-            closeFillPreview();
-            submitFilled(doc, fillState.values);
+            // Warn if some placeholders are left empty (they'd print as [field]).
+            var missing = (doc.variables || []).filter(function (n) {
+                return !fillState.values[n] || !String(fillState.values[n]).trim();
+            });
+            document.querySelectorAll('#fillPreviewFields .fill-ph-input').forEach(function (inp) {
+                inp.classList.toggle('field-missing', missing.indexOf(inp.getAttribute('data-var')) !== -1);
+            });
+            var go = function () { closeFillPreview(); submitFilled(doc, fillState.values); };
+            if (missing.length) {
+                confirmDialog({
+                    title: 'Празни полиња',
+                    message: missing.length + ' ' + (missing.length === 1 ? 'поле не е пополнето и ќе се појави' : 'полиња не се пополнети и ќе се појават') +
+                        ' како [поле] во документот. Сакате да продолжите?',
+                    confirmText: 'Преземи сепак',
+                    cancelText: 'Назад',
+                    onConfirm: go
+                });
+            } else {
+                go();
+            }
         });
 
         function filenameFromDisposition(cd) {
@@ -985,7 +1140,7 @@ if (!empty($template['folder_id'])) {
                     document.body.appendChild(a); a.click(); a.remove();
                     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
                 })
-                .catch(function (e) { alert(e.message || 'Грешка при преземање.'); });
+                .catch(function (e) { toast(e.message || 'Грешка при преземање.', 'error'); });
         }
 
         /* ─────────────────────────────────────────────
@@ -1016,7 +1171,7 @@ if (!empty($template['folder_id'])) {
 
         function pickImportFile(f) {
             if (!f) return;
-            if (!/\.docx$/i.test(f.name)) { alert('Дозволени се само .docx датотеки.'); return; }
+            if (!/\.docx$/i.test(f.name)) { toast('Дозволени се само .docx датотеки.', 'error'); return; }
             importFile = f;
             document.getElementById('importDropText').textContent = f.name;
             document.getElementById('importDrop').classList.add('has-file');
@@ -1071,7 +1226,7 @@ if (!empty($template['folder_id'])) {
         document.getElementById('importConfirm').addEventListener('click', function () {
             var name = document.getElementById('importNameInput').value.trim();
             if (!name) { document.getElementById('importNameInput').focus(); return; }
-            if (!importFile) { alert('Избери датотека за импортирање.'); return; }
+            if (!importFile) { toast('Избери датотека за импортирање.', 'error'); return; }
 
             var btn = this, st = document.getElementById('importStatus');
             btn.disabled = true; btn.textContent = 'Се импортира...';
@@ -1109,7 +1264,7 @@ if (!empty($template['folder_id'])) {
            entered values + inline edits persist across pages)
         ────────────────────────────── */
         function useTemplate() {
-            if (!DOCS.length) { alert('Овој шаблон нема документи.'); return; }
+            if (!DOCS.length) { toast('Овој шаблон нема документи.', 'info'); return; }
             if (window.DraftWorkspace) window.DraftWorkspace.open(TEMPLATE.id, TEMPLATE.name);
         }
 
@@ -1169,10 +1324,10 @@ if (!empty($template['folder_id'])) {
                             document.getElementById('docCardsEmpty').style.display = '';
                         }
                     } else {
-                        alert(res.message || 'Грешка при бришење.');
+                        toast(res.message || 'Грешка при бришење.', 'error');
                     }
                 })
-                .catch(function () { alert('Грешка при поврзување.'); })
+                .catch(function () { toast('Грешка при поврзување.', 'error'); })
                 .finally(function () {
                     btn.disabled = false;
                     btn.textContent = 'Избриши';
@@ -1234,10 +1389,10 @@ if (!empty($template['folder_id'])) {
                         desc.style.display = description ? '' : 'none';
                         closeEditModal();
                     } else {
-                        alert(res.message || 'Грешка при зачувување.');
+                        toast(res.message || 'Грешка при зачувување.', 'error');
                     }
                 })
-                .catch(function () { alert('Грешка при поврзување.'); })
+                .catch(function () { toast('Грешка при поврзување.', 'error'); })
                 .finally(function () {
                     btn.disabled = false;
                     btn.textContent = 'Зачувај';

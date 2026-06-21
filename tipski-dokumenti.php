@@ -33,18 +33,23 @@ $currentPage = 'tipski-dokumenti';
                     <p class="text-sm text-slate-400 mt-1">Управувај со типски документи, папки и шаблони</p>
                 </div>
                 <div id="rootActions" class="flex items-center gap-2 mt-1 flex-shrink-0">
-                    <button id="btnNewFolder" class="btn-secondary">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><line x1="12" x2="12" y1="10" y2="16"/><line x1="9" x2="15" y1="13" y2="13"/>
-                        </svg>
-                        Нова папка
-                    </button>
-                    <button id="btnNewTemplate" class="btn-new-client">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M5 12h14"/><path d="M12 5v14"/>
-                        </svg>
-                        Креирај шаблон
-                    </button>
+                    <div class="newdoc-dropdown" id="createDropdown">
+                        <button id="btnCreate" type="button" class="btn-new-client" aria-haspopup="true" aria-expanded="false">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                            Креирај
+                            <svg class="newdoc-caret" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        <div class="newdoc-menu" id="createMenu" hidden>
+                            <button type="button" class="newdoc-menu-item is-template" id="ndTemplate">
+                                <span class="newdoc-item-tile"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></span>
+                                <span class="newdoc-item-text"><span class="newdoc-item-title">Шаблон</span><span class="newdoc-item-sub">Нов празен шаблон</span></span>
+                            </button>
+                            <button type="button" class="newdoc-menu-item is-folder" id="ndFolder">
+                                <span class="newdoc-item-tile"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>
+                                <span class="newdoc-item-text"><span class="newdoc-item-title">Папка</span><span class="newdoc-item-sub">Организирај ги шаблоните</span></span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -71,8 +76,9 @@ $currentPage = 'tipski-dokumenti';
                         <span id="folderTitleCount" class="folder-view-count"></span>
                     </div>
                     <div id="folderActions" class="flex items-center gap-2 flex-shrink-0">
-                        <button id="btnFolderDelete" class="btn-icon-danger" title="Избриши папка">
+                        <button id="btnFolderDelete" class="btn-secondary btn-secondary--danger" title="Избриши папка">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                            Избриши папка
                         </button>
                         <button id="btnNewTemplateInFolder" class="btn-new-client">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
@@ -175,7 +181,7 @@ $currentPage = 'tipski-dokumenti';
                 <span class="modal-title">Избриши папка</span>
                 <button class="modal-close" id="folderDeleteClose">&times;</button>
             </div>
-            <p style="font-size:0.875rem;color:#57534e;margin-bottom:1.25rem;">Папката ќе биде избришана. Шаблоните во неа нема да се избришат — ќе бидат преместени надвор од папка.</p>
+            <p style="font-size:0.875rem;color:#57534e;margin-bottom:1.25rem;">Папката и <strong>сите шаблони и документи во неа</strong> ќе бидат трајно избришани. Ова дејство е неповратно.</p>
             <div style="display:flex;gap:0.5rem;justify-content:flex-end">
                 <button id="folderDeleteCancel" class="btn-secondary">Откажи</button>
                 <button id="folderDeleteConfirm" class="btn-new-client" style="background:#dc2626">Избриши</button>
@@ -584,9 +590,23 @@ $currentPage = 'tipski-dokumenti';
 
         $id('searchTemplates').addEventListener('input', render);
 
-        $id('btnNewTemplate').addEventListener('click', openCreateModal);
         $id('btnNewTemplateInFolder').addEventListener('click', openCreateModal);
         $id('btnNewTemplateEmpty').addEventListener('click', openCreateModal);
+
+        // Root "Креирај" dropdown → Шаблон / Папка
+        (function () {
+            var dd   = $id('createDropdown');
+            var btn  = $id('btnCreate');
+            var menu = $id('createMenu');
+            if (!dd || !btn || !menu) return;
+            function openMenu()  { menu.hidden = false; btn.setAttribute('aria-expanded', 'true'); document.addEventListener('mousedown', onOutside, true); }
+            function closeMenu() { menu.hidden = true;  btn.setAttribute('aria-expanded', 'false'); document.removeEventListener('mousedown', onOutside, true); }
+            function onOutside(e) { if (!dd.contains(e.target)) closeMenu(); }
+            btn.addEventListener('click', function () { menu.hidden ? openMenu() : closeMenu(); });
+            document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+            $id('ndTemplate').addEventListener('click', function () { closeMenu(); openCreateModal(); });
+            $id('ndFolder').addEventListener('click', function () { closeMenu(); openFolderCreate(); });
+        }());
         $id('tplCreateClose').addEventListener('click', closeCreateModal);
         $id('tplCreateCancel').addEventListener('click', closeCreateModal);
 
@@ -616,10 +636,10 @@ $currentPage = 'tipski-dokumenti';
                         currentFolderId = folderId > 0 ? folderId : null;
                         loadTemplates();
                     } else {
-                        alert(res.message || 'Грешка при креирање.');
+                        toast(res.message || 'Грешка при креирање.', 'error');
                     }
                 })
-                .catch(function () { alert('Грешка при поврзување.'); })
+                .catch(function () { toast('Грешка при поврзување.', 'error'); })
                 .finally(function () { btn.disabled = false; btn.textContent = 'Креирај'; });
         });
 
@@ -645,7 +665,6 @@ $currentPage = 'tipski-dokumenti';
         }
         function closeFolderModal() { closeModal('folderModal'); }
 
-        $id('btnNewFolder').addEventListener('click', openFolderCreate);
         $id('btnFolderRename').addEventListener('click', openFolderRename);
         $id('folderModalClose').addEventListener('click', closeFolderModal);
         $id('folderModalCancel').addEventListener('click', closeFolderModal);
@@ -672,9 +691,9 @@ $currentPage = 'tipski-dokumenti';
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
                     if (res.success) { closeFolderModal(); loadTemplates(); }
-                    else { alert(res.message || 'Грешка.'); }
+                    else { toast(res.message || 'Грешка.', 'error'); }
                 })
-                .catch(function () { alert('Грешка при поврзување.'); })
+                .catch(function () { toast('Грешка при поврзување.', 'error'); })
                 .finally(function () { btn.disabled = false; btn.textContent = 'Зачувај'; });
         });
 
@@ -698,9 +717,9 @@ $currentPage = 'tipski-dokumenti';
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
                     if (res.success) { closeFolderDelete(); currentFolderId = null; loadTemplates(); }
-                    else { alert(res.message || 'Грешка при бришење.'); }
+                    else { toast(res.message || 'Грешка при бришење.', 'error'); }
                 })
-                .catch(function () { alert('Грешка при поврзување.'); })
+                .catch(function () { toast('Грешка при поврзување.', 'error'); })
                 .finally(function () { btn.disabled = false; btn.textContent = 'Избриши'; });
         });
 
@@ -731,9 +750,9 @@ $currentPage = 'tipski-dokumenti';
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
                     if (res.success) { closeDeleteModal(); loadTemplates(); }
-                    else { alert(res.message || 'Грешка при бришење.'); }
+                    else { toast(res.message || 'Грешка при бришење.', 'error'); }
                 })
-                .catch(function () { alert('Грешка при поврзување.'); })
+                .catch(function () { toast('Грешка при поврзување.', 'error'); })
                 .finally(function () { btn.disabled = false; btn.textContent = 'Избриши'; });
         });
 
@@ -771,9 +790,9 @@ $currentPage = 'tipski-dokumenti';
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
                     if (res.success) { closeRenameModal(); loadTemplates(); }
-                    else { alert(res.message || 'Грешка при зачувување.'); }
+                    else { toast(res.message || 'Грешка при зачувување.', 'error'); }
                 })
-                .catch(function () { alert('Грешка при поврзување.'); })
+                .catch(function () { toast('Грешка при поврзување.', 'error'); })
                 .finally(function () { btn.disabled = false; btn.textContent = 'Зачувај'; });
         });
 
@@ -840,12 +859,12 @@ $currentPage = 'tipski-dokumenti';
             fetch('api/template_api.php', { method: 'POST', body: params })
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
-                    if (!res.success) { alert(res.message || 'Грешка при зачувување.'); return; }
+                    if (!res.success) { toast(res.message || 'Грешка при зачувување.', 'error'); return; }
                     tpl.color = key;
                     var card = document.querySelector('.tpl-card[data-id="' + id + '"]');
                     if (card) { key ? card.setAttribute('data-color', key) : card.removeAttribute('data-color'); }
                 })
-                .catch(function () { alert('Грешка при поврзување.'); });
+                .catch(function () { toast('Грешка при поврзување.', 'error'); });
         }
 
         function openColorPopover(btn, id) {
@@ -870,10 +889,10 @@ $currentPage = 'tipski-dokumenti';
             fetch('api/template_api.php', { method: 'POST', body: params })
                 .then(function (r) { return r.json(); })
                 .then(function (res) {
-                    if (!res.success) { alert(res.message || 'Грешка.'); return; }
+                    if (!res.success) { toast(res.message || 'Грешка.', 'error'); return; }
                     loadTemplates();
                 })
-                .catch(function () { alert('Грешка при поврзување.'); });
+                .catch(function () { toast('Грешка при поврзување.', 'error'); });
         }
 
         function openMovePopover(id, x, y) {

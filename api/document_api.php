@@ -8,6 +8,19 @@ require_login();
 
 header('Content-Type: application/json; charset=utf-8');
 
+// On hosts with display_errors off (e.g. InfinityFree), a fatal error (memory
+// limit, etc.) would otherwise return an empty body → "Unexpected end of JSON
+// input" on the client. Surface it as JSON so the real cause is visible.
+register_shutdown_function(function () {
+    $e = error_get_last();
+    if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) {
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=utf-8');
+        }
+        echo json_encode(['success' => false, 'message' => 'Фатална грешка: ' . $e['message']]);
+    }
+});
+
 $pdo = $GLOBALS['fakta_db']->getConnection();
 $companyId = current_company_id();
 $userId    = (int) (current_user()['id'] ?? 0);
@@ -320,6 +333,85 @@ try {
             rrmdir($tmpDir);
             exit;
 
+        case 'rename':
+            $id   = (int) ($_POST['id'] ?? 0);
+            $name = trim($_POST['name'] ?? '');
+            if ($id <= 0 || $name === '') {
+                echo json_encode(['success' => false, 'message' => 'Невалидни параметри.']);
+                exit;
+            }
+            // Praktikant may rename only documents they created.
+            if (!praktikant_guard_document($pdo, $id, $companyId, $userId, $isPraktikant)) {
+                exit;
+            }
+            $stmt = $pdo->prepare('UPDATE documents SET name = ?, updated_at = NOW() WHERE id = ? AND company_id = ?');
+            $stmt->execute([$name, $id, $companyId]);
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'duplicate':
+            $id = (int) ($_POST['id'] ?? 0);
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Невалиден ID.']);
+                exit;
+            }
+            $stmt = $pdo->prepare('SELECT * FROM documents WHERE id = ? AND company_id = ?');
+            $stmt->execute([$id, $companyId]);
+            $src = $stmt->fetch();
+            if (!$src) {
+                echo json_encode(['success' => false, 'message' => 'Документот не е пронајден.']);
+                exit;
+            }
+
+            $newName = $src['name'] . ' (копија)';
+            $stmt = $pdo->prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 FROM documents WHERE template_id = ? AND company_id = ?');
+            $stmt->execute([(int) $src['template_id'], $companyId]);
+            $sortOrder = (int) $stmt->fetchColumn();
+
+            $newFileRel = null;
+            $newOrigRel = null;
+            if (($src['kind'] ?? 'editor') === 'imported' && !empty($src['file_path'])) {
+                // Copy the uploaded .docx on disk so the copy is independent.
+                $srcAbs = UPLOADS_DIR . '/' . $src['file_path'];
+                $dir    = UPLOADS_DIR . '/imported/' . $companyId;
+                if (!is_dir($dir) && !@mkdir($dir, 0775, true)) {
+                    echo json_encode(['success' => false, 'message' => 'Не може да се креира папка.']);
+                    exit;
+                }
+                $uid        = bin2hex(random_bytes(8));
+                $newFileRel = 'imported/' . $companyId . '/' . $uid . '.docx';
+                if (!is_file($srcAbs) || !@copy($srcAbs, UPLOADS_DIR . '/' . $newFileRel)) {
+                    echo json_encode(['success' => false, 'message' => 'Не може да се копира датотеката.']);
+                    exit;
+                }
+                $newOrigRel = $newFileRel;
+            }
+
+            $stmt = $pdo->prepare(
+                'INSERT INTO documents
+                   (company_id, template_id, created_by, kind, name, is_split, pages, variables,
+                    file_path, orig_path, file_ext, sort_order, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())'
+            );
+            $stmt->execute([
+                $companyId, (int) $src['template_id'], $userId ?: null,
+                $src['kind'] ?? 'editor', $newName, (int) $src['is_split'],
+                $src['pages'] ?? '[]', $src['variables'] ?? '[]',
+                $newFileRel, $newOrigRel, $src['file_ext'] ?? null, $sortOrder,
+            ]);
+            $newId = (int) $pdo->lastInsertId();
+
+            // Return the new row so the client can render it without a reload.
+            $stmt = $pdo->prepare('SELECT d.*, u.name AS created_by_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.id = ? AND d.company_id = ?');
+            $stmt->execute([$newId, $companyId]);
+            $row = $stmt->fetch();
+            if ($row) {
+                $row['pages']     = json_decode($row['pages'], true) ?: [];
+                $row['variables'] = json_decode($row['variables'], true) ?: [];
+            }
+            echo json_encode(['success' => true, 'id' => $newId, 'data' => $row]);
+            break;
+
         case 'master':
             // Stream the unfilled .docx master inline, for the client-side
             // (mammoth.js) live preview. Company-scoped, imported docs only.
@@ -353,6 +445,8 @@ try {
             echo json_encode(['success' => false, 'message' => 'Непозната акција.']);
     }
 
-} catch (Exception $e) {
+} catch (Throwable $e) {
+    // Catch Error too (e.g. "Class ZipArchive not found" when the zip extension
+    // is missing), so the client gets a real message instead of an empty 500.
     echo json_encode(['success' => false, 'message' => 'Серверска грешка: ' . $e->getMessage()]);
 }
