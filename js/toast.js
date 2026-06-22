@@ -35,11 +35,22 @@
         var el = document.createElement('div');
         el.className = 'toast toast--' + type;
         el.innerHTML = '<span class="toast-ico">' + (ICONS[type] || ICONS.info) + '</span><span class="toast-msg"></span>';
-        el.querySelector('.toast-msg').textContent = message;
+        var msgEl = el.querySelector('.toast-msg');
+        msgEl.textContent = message;
+        // Optional trailing clickable link: opts.link = { text, href }
+        if (opts.link && opts.link.href) {
+            msgEl.appendChild(document.createTextNode(' '));
+            var a = document.createElement('a');
+            a.className = 'toast-link';
+            a.href = opts.link.href;
+            a.textContent = opts.link.text || 'отвори';
+            a.addEventListener('click', function (e) { e.stopPropagation(); }); // don't dismiss before navigating
+            msgEl.appendChild(a);
+        }
         host.appendChild(el);
         requestAnimationFrame(function () { el.classList.add('toast--in'); });
 
-        var ttl = opts.duration || (type === 'error' ? 5000 : 3000);
+        var ttl = opts.duration || (opts.link ? 7000 : (type === 'error' ? 5000 : 3000));
         var timer = setTimeout(remove, ttl);
         function remove() {
             clearTimeout(timer);

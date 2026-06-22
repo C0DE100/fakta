@@ -92,6 +92,7 @@ try {
             $stmt = $pdo->prepare('INSERT INTO templates (company_id, created_by, folder_id, name, description, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())');
             $stmt->execute([$companyId, $userId ?: null, $folderId, $name, $description !== '' ? $description : null, $color !== '' ? $color : null]);
             $id = (int) $pdo->lastInsertId();
+            fakta_audit('template.create', 'template', $id, $name);
             echo json_encode(['success' => true, 'id' => $id]);
             break;
 
@@ -105,7 +106,9 @@ try {
             }
             $stmt = $pdo->prepare('INSERT INTO template_folders (company_id, created_by, name, color, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())');
             $stmt->execute([$companyId, $userId ?: null, $name, $color !== '' ? $color : null]);
-            echo json_encode(['success' => true, 'id' => (int) $pdo->lastInsertId()]);
+            $folderNewId = (int) $pdo->lastInsertId();
+            fakta_audit('folder.create', 'folder', $folderNewId, $name);
+            echo json_encode(['success' => true, 'id' => $folderNewId]);
             break;
 
         case 'folder_update':
@@ -168,6 +171,7 @@ try {
 
             $stmt = $pdo->prepare('DELETE FROM template_folders WHERE id = ? AND company_id = ?');
             $stmt->execute([$id, $companyId]);
+            fakta_audit('folder.delete', 'folder', $id, count($tplIds) . ' шаблони избришани');
             echo json_encode(['success' => true]);
             break;
 
@@ -212,6 +216,7 @@ try {
                 $stmt = $pdo->prepare('UPDATE templates SET name = ?, description = ?, updated_at = NOW() WHERE id = ? AND company_id = ?');
                 $stmt->execute([$name, $description !== '' ? $description : null, $id, $companyId]);
             }
+            fakta_audit('template.update', 'template', $id, $name);
             echo json_encode(['success' => true]);
             break;
 
@@ -270,6 +275,7 @@ try {
             }
             $stmt = $pdo->prepare('DELETE FROM templates WHERE id = ? AND company_id = ?');
             $stmt->execute([$id, $companyId]);
+            fakta_audit('template.delete', 'template', $id);
             echo json_encode(['success' => true]);
             break;
 

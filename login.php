@@ -16,7 +16,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email    = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    if ($email === '' || $password === '') {
+    if (!hash_equals(fakta_csrf(), (string) ($_POST['csrf'] ?? ''))) {
+        $error = 'Сесијата истече. Освежи ја страницата и обиди се повторно.';
+    } elseif ($email === '' || $password === '') {
         $error = 'Внесете е-пошта и лозинка.';
     } else {
         $user = $auth->login($email, $password);
@@ -105,6 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form method="post" action="<?= htmlspecialchars(fakta_url('login.php')) ?>">
+                <input type="hidden" name="csrf" value="<?= htmlspecialchars(fakta_csrf()) ?>">
                 <div class="group">
                     <label for="email">Е-пошта</label>
                     <input type="email" id="email" name="email" class="field" autocomplete="username" required

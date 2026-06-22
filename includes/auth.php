@@ -23,6 +23,78 @@ if (!defined('FAKTA_API')) {
     define('FAKTA_API', false);
 }
 
+/*
+|------------------------------------------------------------------------------
+| CSRF protection
+|------------------------------------------------------------------------------
+| One token per session (synchronizer pattern). The client sends it back on
+| every state-changing request via the X-CSRF-Token header (see js/csrf.js) or
+| a `csrf` POST field (forms like login). API POST/PUT/DELETE are auto-guarded.
+*/
+if (!defined('CSRF_ENABLED')) {
+    define('CSRF_ENABLED', true);
+}
+if (empty($_SESSION['csrf'])) {
+    $_SESSION['csrf'] = bin2hex(random_bytes(32));
+}
+
+/** The current session's CSRF token (for embedding in pages/forms). */
+function fakta_csrf(): string
+{
+    return $_SESSION['csrf'] ?? '';
+}
+
+/** Verify the request's CSRF token; sends 403 and exits on mismatch. */
+function fakta_check_csrf(): void
+{
+    if (!CSRF_ENABLED) {
+        return;
+    }
+    $sent = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf'] ?? '';
+    if (!hash_equals($_SESSION['csrf'] ?? '', (string) $sent)) {
+        http_response_code(403);
+        if (FAKTA_API) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'message' => 'Невалиден безбедносен токен. Освежи ја страницата и обиди се повторно.']);
+        } else {
+            echo 'Невалиден безбедносен токен. Освежи ја страницата.';
+        }
+        exit;
+    }
+}
+
+// Auto-guard every state-changing API request. Pages opt in manually.
+if (FAKTA_API && in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+    fakta_check_csrf();
+}
+
+/**
+ * Append an entry to the audit log (who did what, when). Best-effort —
+ * never throws, so logging can't break the action it records.
+ */
+function fakta_audit(string $action, ?string $entity = null, ?int $entityId = null, ?string $detail = null): void
+{
+    try {
+        $pdo = $GLOBALS['fakta_db']->getConnection();
+        $u   = current_user();
+        $stmt = $pdo->prepare(
+            'INSERT INTO audit_log (company_id, user_id, user_name, action, entity, entity_id, detail, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())'
+        );
+        $stmt->execute([
+            (int) (current_company_id() ?: 0),
+            $u['id'] ?? null,
+            $u['name'] ?? null,
+            $action,
+            $entity,
+            $entityId,
+            $detail !== null && $detail !== '' ? mb_substr($detail, 0, 500) : null,
+        ]);
+    } catch (Throwable $e) {
+        // Swallow — auditing must never break the request.
+    }
+}
+
 /** Web path to a file in the app root, regardless of which sub-dir we're in (e.g. /fakta/landing.php). */
 function fakta_url(string $path): string
 {

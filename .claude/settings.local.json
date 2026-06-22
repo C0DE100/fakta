@@ -55,7 +55,20 @@
       "PowerShell(node -c \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\js\\\\draft-workspace.js\" 2>&1)",
       "Bash(node --check js/toast.js)",
       "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\includes\\\\nav.php\")",
-      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\api\\\\template_api.php\")"
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\api\\\\template_api.php\")",
+      "PowerShell($f = @\\(\"includes\\\\auth.php\",\"includes\\\\nav.php\",\"includes\\\\admin_header.php\",\"login.php\",\"config.php\"\\); foreach\\($x in $f\\){ & \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\$x\" }; node --check \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\js\\\\csrf.js\"; if\\($?\\){ \"csrf.js OK\" })",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\seed\\\\migrate_audit_and_generated.php\")",
+      "PowerShell($f = @\\(\"api\\\\document_api.php\",\"api\\\\template_api.php\",\"api\\\\client_api.php\",\"classes\\\\Client.php\",\"includes\\\\auth.php\"\\); foreach\\($x in $f\\){ & \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\$x\" })",
+      "PowerShell($f = @\\(\"dnevnik.php\",\"klienti.php\",\"includes\\\\sidebar.php\"\\); foreach\\($x in $f\\){ & \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\$x\" })",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\klient.php\")",
+      "PowerShell(node --check \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\js\\\\draft-workspace.js\")",
+      "PowerShell(if\\($?\\){ \"draft-workspace OK\" })",
+      "Bash(node --check \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\js\\\\draft-workspace.js\")",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\dnevnik.php\")",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\includes\\\\sidebar.php\")",
+      "PowerShell(node --check \"C:\\\\xampp\\\\htdocs\\\\fakta\\\\js\\\\toast.js\")",
+      "PowerShell(if\\($?\\){ \"toast OK\" })",
+      "PowerShell(if\\($?\\){ \"ws OK\" })"
     ],
     "additionalDirectories": [
       "\\tmp"

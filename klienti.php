@@ -40,6 +40,12 @@ if (current_role() === 'super_admin') {
             <div class="bg-white border border-slate-200 rounded-xl shadow-sm">
                 <div class="inv-filters">
                     <input type="search" id="searchClients" class="field inv-filter-search" placeholder="Пребарај клиент...">
+                    <?php if (current_role() !== 'praktikant'): ?>
+                    <button id="btnTrash" class="btn-secondary" title="Корпа (избришани клиенти)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        Корпа
+                    </button>
+                    <?php endif; ?>
                     <button data-modal-open="panelSelectType" class="btn-new-client">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/>
@@ -226,7 +232,98 @@ if (current_role() === 'super_admin') {
         </div>
     </div>
 
+    <!-- Trash (deleted clients) -->
+    <div id="trashModal" class="modal-overlay" aria-hidden="true">
+        <div class="modal-box" role="dialog" aria-modal="true" style="max-width:34rem">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title">Корпа</h2>
+                    <p class="modal-subtitle">Избришани клиенти · автоматски се чистат по 30 дена</p>
+                </div>
+                <button id="trashClose" class="modal-close" aria-label="Затвори">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div id="trashList" class="trash-list"><p class="trash-empty">Се вчитува…</p></div>
+        </div>
+    </div>
+
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="js/app.js"></script>
+    <script>
+    (function () {
+        var btn = document.getElementById('btnTrash');
+        if (!btn) return;
+        var modal = document.getElementById('trashModal');
+        var listEl = document.getElementById('trashList');
+        var didRestore = false;
+
+        function esc(s) { var d = document.createElement('div'); d.appendChild(document.createTextNode(s == null ? '' : s)); return d.innerHTML; }
+        function clientName(c) { return c.type === 'company' ? (c.company_name || 'Правно лице') : (c.full_name || 'Физичко лице'); }
+        function fmt(s) { if (!s) return ''; var d = new Date(String(s).replace(' ', 'T')); if (isNaN(d.getTime())) return ''; return ('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)+'.'+d.getFullYear(); }
+
+        function open() {
+            didRestore = false;
+            modal.classList.add('open'); modal.removeAttribute('aria-hidden'); document.body.classList.add('modal-open');
+            load();
+        }
+        function close() {
+            modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); document.body.classList.remove('modal-open');
+            if (didRestore) location.reload(); // refresh the main list to show restored clients
+        }
+        function load() {
+            listEl.innerHTML = '<p class="trash-empty">Се вчитува…</p>';
+            fetch('api/client_api.php?action=list_deleted').then(function (r) { return r.json(); }).then(function (res) {
+                if (!res.success) { listEl.innerHTML = '<p class="trash-empty">Грешка при вчитување.</p>'; return; }
+                var rows = res.data || [];
+                if (!rows.length) { listEl.innerHTML = '<p class="trash-empty">Корпата е празна.</p>'; return; }
+                listEl.innerHTML = rows.map(function (c) {
+                    return '<div class="trash-row" data-id="' + c.id + '">' +
+                        '<div class="trash-row-info"><div class="trash-row-name">' + esc(clientName(c)) + '</div>' +
+                            '<div class="trash-row-meta">' + (c.type === 'company' ? 'Правно лице' : 'Физичко лице') +
+                            (c.deleted_at ? ' · избришан ' + fmt(c.deleted_at) : '') + '</div></div>' +
+                        '<div class="trash-row-actions">' +
+                            '<button class="btn-secondary trash-restore" data-id="' + c.id + '">Врати</button>' +
+                            '<button class="btn-secondary btn-secondary--danger trash-purge" data-id="' + c.id + '">Избриши трајно</button>' +
+                        '</div></div>';
+                }).join('');
+            }).catch(function () { listEl.innerHTML = '<p class="trash-empty">Грешка при поврзување.</p>'; });
+        }
+
+        function post(action, id) {
+            return fetch('api/client_api.php', { method: 'POST', body: new URLSearchParams({ action: action, id: id }) })
+                .then(function (r) { return r.json(); });
+        }
+
+        listEl.addEventListener('click', function (e) {
+            var rb = e.target.closest('.trash-restore');
+            var pb = e.target.closest('.trash-purge');
+            if (rb) {
+                post('restore', rb.getAttribute('data-id')).then(function (res) {
+                    if (res.success) { didRestore = true; toast('Клиентот е вратен.', 'success'); load(); }
+                    else toast(res.message || 'Грешка.', 'error');
+                }).catch(function () { toast('Грешка при поврзување.', 'error'); });
+            } else if (pb) {
+                var id = pb.getAttribute('data-id');
+                confirmDialog({
+                    title: 'Трајно бришење', danger: true,
+                    message: 'Овој клиент ќе биде трајно избришан и не може да се врати. Продолжи?',
+                    confirmText: 'Избриши трајно', cancelText: 'Откажи',
+                    onConfirm: function () {
+                        post('force_delete', id).then(function (res) {
+                            if (res.success) { toast('Клиентот е трајно избришан.', 'success'); load(); }
+                            else toast(res.message || 'Грешка.', 'error');
+                        }).catch(function () { toast('Грешка при поврзување.', 'error'); });
+                    }
+                });
+            }
+        });
+
+        btn.addEventListener('click', open);
+        document.getElementById('trashClose').addEventListener('click', close);
+        modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && modal.classList.contains('open')) close(); });
+    }());
+    </script>
 </body>
 </html>

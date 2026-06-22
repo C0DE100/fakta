@@ -89,7 +89,10 @@ $settingsUrl = function_exists('fakta_url') ? fakta_url('podesuvanja.php') : 'po
 window.FAKTA_CO   = <?= json_encode((string)(function_exists('current_company_id') ? (current_company_id() ?? '') : '')) ?>;
 window.FAKTA_ROLE = <?= json_encode((string)(function_exists('current_role') ? (current_role() ?? '') : '')) ?>;
 window.FAKTA_UID  = <?= json_encode((int)($navUser['id'] ?? 0)) ?>;
+window.FAKTA_CSRF = <?= json_encode(function_exists('fakta_csrf') ? fakta_csrf() : '') ?>;
 </script>
+<!-- CSRF: attach the session token to every state-changing request -->
+<script src="js/csrf.js" defer></script>
 <!-- Global toast + confirm dialog helpers (window.toast / window.confirmDialog) -->
 <script src="js/toast.js" defer></script>
 <!-- Global "Користи шаблон" workspace, docked on every page -->

@@ -114,7 +114,9 @@ try {
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())'
             );
             $stmt->execute([$companyId, $templateId, $userId ?: null, $name, $isSplit ? 1 : 0, $pages, $variables, $sortOrder]);
-            echo json_encode(['success' => true, 'id' => (int) $pdo->lastInsertId()]);
+            $newDocId = (int) $pdo->lastInsertId();
+            fakta_audit('document.create', 'document', $newDocId, $name);
+            echo json_encode(['success' => true, 'id' => $newDocId]);
             break;
 
         case 'update':
@@ -145,6 +147,7 @@ try {
                 'UPDATE documents SET name = ?, is_split = ?, pages = ?, variables = ?, updated_at = NOW() WHERE id = ? AND company_id = ?'
             );
             $stmt->execute([$name, $isSplit ? 1 : 0, $pages, $variables, $id, $companyId]);
+            fakta_audit('document.update', 'document', $id, $name);
             echo json_encode(['success' => true]);
             break;
 
@@ -193,9 +196,11 @@ try {
                 exit;
             }
             // For imported docs, delete the uploaded original + .docx master too.
-            $fstmt = $pdo->prepare('SELECT file_path, orig_path FROM documents WHERE id = ? AND company_id = ?');
+            $fstmt = $pdo->prepare('SELECT name, file_path, orig_path FROM documents WHERE id = ? AND company_id = ?');
             $fstmt->execute([$id, $companyId]);
+            $delName = '';
             if ($frow = $fstmt->fetch()) {
+                $delName = $frow['name'] ?? '';
                 foreach ([$frow['file_path'] ?? null, $frow['orig_path'] ?? null] as $rel) {
                     if ($rel) {
                         @unlink(UPLOADS_DIR . '/' . $rel);
@@ -204,6 +209,7 @@ try {
             }
             $stmt = $pdo->prepare('DELETE FROM documents WHERE id = ? AND company_id = ?');
             $stmt->execute([$id, $companyId]);
+            fakta_audit('document.delete', 'document', $id, $delName);
             echo json_encode(['success' => true]);
             break;
 
@@ -277,9 +283,11 @@ try {
                 json_encode($placeholders, JSON_UNESCAPED_UNICODE),
                 $fileRel, $fileRel, $sortOrder,
             ]);
+            $newImportId = (int) $pdo->lastInsertId();
+            fakta_audit('document.import', 'document', $newImportId, $name);
             echo json_encode([
                 'success'      => true,
-                'id'           => (int) $pdo->lastInsertId(),
+                'id'           => $newImportId,
                 'placeholders' => $placeholders,
             ]);
             break;
@@ -329,6 +337,7 @@ try {
                 . "filename*=UTF-8''" . rawurlencode($dlName));
             header('Content-Length: ' . filesize($sendPath));
             header('Cache-Control: no-store');
+            fakta_audit('document.download', 'document', $id, $doc['name']);
             readfile($sendPath);
             rrmdir($tmpDir);
             exit;
@@ -346,6 +355,7 @@ try {
             }
             $stmt = $pdo->prepare('UPDATE documents SET name = ?, updated_at = NOW() WHERE id = ? AND company_id = ?');
             $stmt->execute([$name, $id, $companyId]);
+            fakta_audit('document.rename', 'document', $id, $name);
             echo json_encode(['success' => true]);
             break;
 
@@ -400,6 +410,7 @@ try {
                 $newFileRel, $newOrigRel, $src['file_ext'] ?? null, $sortOrder,
             ]);
             $newId = (int) $pdo->lastInsertId();
+            fakta_audit('document.duplicate', 'document', $newId, $newName);
 
             // Return the new row so the client can render it without a reload.
             $stmt = $pdo->prepare('SELECT d.*, u.name AS created_by_name FROM documents d LEFT JOIN users u ON u.id = d.created_by WHERE d.id = ? AND d.company_id = ?');
@@ -410,6 +421,86 @@ try {
                 $row['variables'] = json_decode($row['variables'], true) ?: [];
             }
             echo json_encode(['success' => true, 'id' => $newId, 'data' => $row]);
+            break;
+
+        // ── Generated documents tied to a client (history; option a) ─────────
+        case 'record_generation':
+            $clientId = (int) ($_POST['client_id'] ?? 0);
+            if ($clientId <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Невалиден клиент.']);
+                exit;
+            }
+            // The client must belong to this company and not be in the trash.
+            $cstmt = $pdo->prepare('SELECT 1 FROM clients WHERE id = ? AND company_id = ? AND deleted_at IS NULL');
+            $cstmt->execute([$clientId, $companyId]);
+            if (!$cstmt->fetchColumn()) {
+                echo json_encode(['success' => false, 'message' => 'Клиентот не е пронајден.']);
+                exit;
+            }
+            $genTemplateId   = (int) ($_POST['template_id'] ?? 0) ?: null;
+            $genTemplateName = trim($_POST['template_name'] ?? '');
+            $valuesJson      = $_POST['values'] ?? '{}';
+            if (!is_array(json_decode($valuesJson, true))) {
+                $valuesJson = '{}';
+            }
+            $items = json_decode($_POST['items'] ?? '[]', true);
+            if (!is_array($items) || !$items) {
+                echo json_encode(['success' => false, 'message' => 'Нема документи за зачувување.']);
+                exit;
+            }
+            $ins = $pdo->prepare(
+                'INSERT INTO generated_documents
+                   (company_id, client_id, template_id, document_id, doc_name, template_name, kind, values_json, created_by, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())'
+            );
+            $genCount = 0;
+            foreach ($items as $it) {
+                $docId   = (int) ($it['id'] ?? 0) ?: null;
+                $docName = trim((string) ($it['name'] ?? 'Документ'));
+                $kind    = (($it['kind'] ?? 'editor') === 'imported') ? 'imported' : 'editor';
+                $ins->execute([
+                    $companyId, $clientId, $genTemplateId, $docId, $docName,
+                    $genTemplateName !== '' ? $genTemplateName : null, $kind, $valuesJson, $userId ?: null,
+                ]);
+                $genCount++;
+            }
+            fakta_audit('document.generate', 'client', $clientId, $genCount . ' док. од „' . $genTemplateName . '“');
+            echo json_encode(['success' => true, 'count' => $genCount]);
+            break;
+
+        case 'list_generated':
+            $clientId = (int) ($_GET['client_id'] ?? 0);
+            if ($clientId <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Невалиден клиент.']);
+                exit;
+            }
+            $stmt = $pdo->prepare(
+                'SELECT g.*, u.name AS created_by_name
+                 FROM generated_documents g
+                 LEFT JOIN users u ON u.id = g.created_by
+                 WHERE g.client_id = ? AND g.company_id = ?
+                 ORDER BY g.id DESC'
+            );
+            $stmt->execute([$clientId, $companyId]);
+            echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
+            break;
+
+        case 'delete_generated':
+            $id = (int) ($_POST['id'] ?? 0);
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Невалиден ID.']);
+                exit;
+            }
+            // Capture name + client for the audit entry before removing it.
+            $gstmt = $pdo->prepare('SELECT doc_name, client_id FROM generated_documents WHERE id = ? AND company_id = ?');
+            $gstmt->execute([$id, $companyId]);
+            $grow = $gstmt->fetch();
+            $stmt = $pdo->prepare('DELETE FROM generated_documents WHERE id = ? AND company_id = ?');
+            $stmt->execute([$id, $companyId]);
+            if ($grow) {
+                fakta_audit('document.generate_delete', 'client', (int) $grow['client_id'], $grow['doc_name'] ?? '');
+            }
+            echo json_encode(['success' => true]);
             break;
 
         case 'master':

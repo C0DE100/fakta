@@ -188,6 +188,58 @@ class Client
         return $stmt->rowCount() > 0;
     }
 
+    /** Soft-deleted clients (the trash), most recently deleted first. Tenant-scoped. */
+    public function getDeleted(int $companyId): array
+    {
+        $sql = "SELECT c.*, u.name AS created_by_name
+                FROM clients c
+                LEFT JOIN users u ON u.id = c.created_by
+                WHERE c.company_id = :company_id AND c.deleted_at IS NOT NULL
+                ORDER BY c.deleted_at DESC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([':company_id' => $companyId]);
+
+        return array_map(fn($client) => $this->decryptClient($client), $stmt->fetchAll());
+    }
+
+    /** Restore a trashed client. Tenant-scoped; true if a row changed. */
+    public function restore(int $id, int $companyId): bool
+    {
+        $sql = "UPDATE clients SET deleted_at = NULL
+                WHERE id = :id AND company_id = :company_id AND deleted_at IS NOT NULL";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([':id' => $id, ':company_id' => $companyId]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    /** Permanently delete a single trashed client. Tenant-scoped. */
+    public function forceDelete(int $id, int $companyId): bool
+    {
+        $sql = "DELETE FROM clients
+                WHERE id = :id AND company_id = :company_id AND deleted_at IS NOT NULL";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([':id' => $id, ':company_id' => $companyId]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * Auto-purge: permanently remove clients trashed more than $days ago.
+     * Called lazily on trash views (no cron on shared hosting). Returns count.
+     */
+    public function purgeOld(int $companyId, int $days = 30): int
+    {
+        $days = max(1, $days);
+        $sql = "DELETE FROM clients
+                WHERE company_id = :company_id AND deleted_at IS NOT NULL
+                  AND deleted_at < (NOW() - INTERVAL $days DAY)";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([':company_id' => $companyId]);
+
+        return $stmt->rowCount();
+    }
+
     private function decryptClient(array $client): array
     {
         $fields = $client['type'] === 'company'

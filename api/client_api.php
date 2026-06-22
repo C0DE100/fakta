@@ -17,7 +17,7 @@ $companyId = current_company_id();
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
 // Praktikant may create and view clients, but not modify or delete them.
-if (current_role() === 'praktikant' && in_array($action, ['update_company', 'update_individual', 'delete'], true)) {
+if (current_role() === 'praktikant' && in_array($action, ['update_company', 'update_individual', 'delete', 'restore', 'force_delete'], true)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Немате дозвола за оваа акција.']);
     exit;
@@ -41,6 +41,7 @@ try {
             }
 
             $id = $client->createCompany($companyId, $companyName, $headquarters, $embs, $edb, $manager, $email, $phone, current_user()['id'] ?? null);
+            fakta_audit('client.create', 'client', (int) $id, $companyName);
             echo json_encode(['success' => true, 'message' => 'Клиентот е успешно креиран.', 'id' => $id]);
             break;
 
@@ -58,6 +59,7 @@ try {
             }
 
             $id = $client->createIndividual($companyId, $fullName, $address, $embg, $idCardNumber, $email, $phone, current_user()['id'] ?? null);
+            fakta_audit('client.create', 'client', (int) $id, $fullName);
             echo json_encode(['success' => true, 'message' => 'Клиентот е успешно креиран.', 'id' => $id]);
             break;
 
@@ -92,6 +94,7 @@ try {
             }
 
             $client->updateCompany($id, $companyId, $companyName, $headquarters, $embs, $edb, $manager, $email, $phone);
+            fakta_audit('client.update', 'client', $id, $companyName);
             echo json_encode(['success' => true, 'message' => 'Клиентот е успешно ажуриран.']);
             break;
 
@@ -110,6 +113,7 @@ try {
             }
 
             $client->updateIndividual($id, $companyId, $fullName, $address, $embg, $idCardNumber, $email, $phone);
+            fakta_audit('client.update', 'client', $id, $fullName);
             echo json_encode(['success' => true, 'message' => 'Клиентот е успешно ажуриран.']);
             break;
 
@@ -120,7 +124,37 @@ try {
                 exit;
             }
             $ok = $client->softDelete($id, $companyId);
-            echo json_encode(['success' => $ok, 'message' => $ok ? 'Клиентот е избришан.' : 'Клиентот не постои.']);
+            if ($ok) fakta_audit('client.delete', 'client', $id);
+            echo json_encode(['success' => $ok, 'message' => $ok ? 'Клиентот е преместен во корпа.' : 'Клиентот не постои.']);
+            break;
+
+        case 'list_deleted':
+            // Lazy auto-purge: drop anything trashed > 30 days ago (no cron on host).
+            $client->purgeOld($companyId, 30);
+            $deleted = $client->getDeleted($companyId);
+            echo json_encode(['success' => true, 'data' => $deleted]);
+            break;
+
+        case 'restore':
+            $id = (int) ($_POST['id'] ?? 0);
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Невалиден ID.']);
+                exit;
+            }
+            $ok = $client->restore($id, $companyId);
+            if ($ok) fakta_audit('client.restore', 'client', $id);
+            echo json_encode(['success' => $ok, 'message' => $ok ? 'Клиентот е вратен.' : 'Клиентот не постои во корпата.']);
+            break;
+
+        case 'force_delete':
+            $id = (int) ($_POST['id'] ?? 0);
+            if ($id <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Невалиден ID.']);
+                exit;
+            }
+            $ok = $client->forceDelete($id, $companyId);
+            if ($ok) fakta_audit('client.purge', 'client', $id);
+            echo json_encode(['success' => $ok, 'message' => $ok ? 'Клиентот е трајно избришан.' : 'Клиентот не постои во корпата.']);
             break;
 
         default:

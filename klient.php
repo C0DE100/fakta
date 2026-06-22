@@ -119,6 +119,12 @@ if ($client) {
                 </div>
             </div>
 
+            <div class="client-tabs" id="clientTabs">
+                <button type="button" class="client-tab is-active" data-tab="details">Детали</button>
+                <button type="button" class="client-tab" data-tab="documents">Документи</button>
+            </div>
+
+            <div class="client-tab-panel" id="tabDetails">
             <form id="profileForm" class="profile-details">
                 <input type="hidden" name="action" value="<?= $isCompany ? 'update_company' : 'update_individual' ?>">
                 <input type="hidden" name="id" value="<?= (int) $client['id'] ?>">
@@ -139,6 +145,11 @@ if ($client) {
                     <span>Креатор непознат</span>
                 <?php endif; ?>
                 <?php if ($createdAt !== ''): ?><span class="profile-meta-dot">·</span><span><?= $createdAt ?></span><?php endif; ?>
+            </div>
+            </div><!-- /#tabDetails -->
+
+            <div class="client-tab-panel" id="tabDocuments" hidden>
+                <div id="genDocsList" class="gen-docs"><p class="gen-docs-empty">Се вчитува…</p></div>
             </div>
         </div>
 
@@ -212,6 +223,101 @@ if ($client) {
             });
         });
     });
+    </script>
+    <script>
+    (function () {
+        var tabs = document.getElementById('clientTabs');
+        if (!tabs) return;
+        var CLIENT_ID  = <?= (int) $client['id'] ?>;
+        var elDetails  = document.getElementById('tabDetails');
+        var elDocs     = document.getElementById('tabDocuments');
+        var listEl     = document.getElementById('genDocsList');
+        var actions    = document.querySelector('.profile-head-actions');
+        var loaded     = false;
+
+        var FILE_ICO  = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+        var TRASH_ICO = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
+
+        function esc(s) { var d = document.createElement('div'); d.appendChild(document.createTextNode(s == null ? '' : s)); return d.innerHTML; }
+        function escAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+        function fmt(s) { if (!s) return ''; var d = new Date(String(s).replace(' ', 'T')); if (isNaN(d.getTime())) return ''; return ('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)+'.'+d.getFullYear(); }
+
+        tabs.addEventListener('click', function (e) {
+            var b = e.target.closest('.client-tab');
+            if (!b) return;
+            var tab = b.getAttribute('data-tab');
+            tabs.querySelectorAll('.client-tab').forEach(function (x) { x.classList.toggle('is-active', x === b); });
+            elDetails.hidden  = tab !== 'details';
+            elDocs.hidden     = tab !== 'documents';
+            if (actions) actions.style.display = tab === 'details' ? '' : 'none';
+            if (tab === 'documents' && !loaded) { loaded = true; loadDocs(); }
+        });
+
+        // Arriving from "Зачувано во досието на <client>" → open Документи directly.
+        if (new URLSearchParams(location.search).get('tab') === 'documents') {
+            var docTab = tabs.querySelector('.client-tab[data-tab="documents"]');
+            if (docTab) docTab.click();
+        }
+
+        function loadDocs() {
+            listEl.innerHTML = '<p class="gen-docs-empty">Се вчитува…</p>';
+            fetch('api/document_api.php?action=list_generated&client_id=' + CLIENT_ID)
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res.success) { listEl.innerHTML = '<p class="gen-docs-empty">Грешка при вчитување.</p>'; return; }
+                    var rows = res.data || [];
+                    if (!rows.length) { listEl.innerHTML = '<p class="gen-docs-empty">Сè уште нема генерирани документи за овој клиент.</p>'; return; }
+                    listEl.innerHTML = rows.map(function (g) {
+                        var ext = g.kind === 'imported' ? 'DOCX' : 'PDF';
+                        return '<div class="gen-doc-row" data-id="' + g.id + '">' +
+                            '<span class="gen-doc-ico">' + FILE_ICO + '</span>' +
+                            '<div class="gen-doc-info">' +
+                                '<div class="gen-doc-name">' + esc(g.doc_name) + '</div>' +
+                                '<div class="gen-doc-meta">' + (g.template_name ? esc(g.template_name) + ' · ' : '') +
+                                    'преземено ' + fmt(g.created_at) + (g.created_by_name ? ' · ' + esc(g.created_by_name) : '') + '</div>' +
+                            '</div>' +
+                            '<div class="gen-doc-actions">' +
+                                '<button class="btn-secondary gen-doc-dl" data-tpl="' + (g.template_id || '') + '" data-doc="' + (g.document_id || '') + '" data-vals="' + escAttr(g.values_json || '{}') + '">Преземи ' + ext + '</button>' +
+                                '<button class="btn-icon-danger gen-doc-del" data-id="' + g.id + '" title="Отстрани од листата">' + TRASH_ICO + '</button>' +
+                            '</div></div>';
+                    }).join('');
+                })
+                .catch(function () { listEl.innerHTML = '<p class="gen-docs-empty">Грешка при поврзување.</p>'; });
+        }
+
+        listEl.addEventListener('click', function (e) {
+            var dl  = e.target.closest('.gen-doc-dl');
+            var del = e.target.closest('.gen-doc-del');
+            if (dl) {
+                var tpl   = parseInt(dl.getAttribute('data-tpl'), 10) || 0;
+                var docId = parseInt(dl.getAttribute('data-doc'), 10) || 0;
+                var vals  = {}; try { vals = JSON.parse(dl.getAttribute('data-vals') || '{}'); } catch (err) {}
+                if (!docId) { toast('Документот повеќе не постои.', 'error'); return; }
+                if (window.DraftWorkspace && window.DraftWorkspace.downloadSingle) {
+                    window.DraftWorkspace.downloadSingle(tpl, docId, vals);
+                }
+            } else if (del) {
+                var id = del.getAttribute('data-id');
+                confirmDialog({
+                    title: 'Отстрани документ',
+                    message: 'Овој генериран документ ќе биде отстранет од досието на клиентот. Продолжи?',
+                    confirmText: 'Отстрани', cancelText: 'Откажи', danger: true,
+                    onConfirm: function () {
+                        fetch('api/document_api.php', { method: 'POST', body: new URLSearchParams({ action: 'delete_generated', id: id }) })
+                            .then(function (r) { return r.json(); })
+                            .then(function (res) {
+                                if (!res.success) { toast(res.message || 'Грешка.', 'error'); return; }
+                                var row = listEl.querySelector('.gen-doc-row[data-id="' + id + '"]');
+                                if (row) row.remove();
+                                if (!listEl.querySelector('.gen-doc-row')) listEl.innerHTML = '<p class="gen-docs-empty">Сè уште нема генерирани документи за овој клиент.</p>';
+                                toast('Отстрането од листата.', 'success');
+                            })
+                            .catch(function () { toast('Грешка при поврзување.', 'error'); });
+                    }
+                });
+            }
+        });
+    }());
     </script>
     <?php endif; ?>
 </body>

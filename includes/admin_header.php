@@ -24,6 +24,8 @@ $adminBack = $adminBack ?? null;
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?= htmlspecialchars($adminCss) ?>">
+    <script>window.FAKTA_CSRF = <?= json_encode(function_exists('fakta_csrf') ? fakta_csrf() : '') ?>;</script>
+    <script src="<?= htmlspecialchars(fakta_url('js/csrf.js')) ?>" defer></script>
 </head>
 <body>
 

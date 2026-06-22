@@ -28,7 +28,8 @@
     // and only ask for its variables); null ⇒ whole-template mode. allDocs holds
     // the full fetched list so we can re-filter without re-fetching.
     var state = { id: null, name: '', docId: null, docName: '',
-                  docs: null, allDocs: null, values: {}, built: false };
+                  docs: null, allDocs: null, values: {}, built: false, clientId: '' };
+    var _clientsCache = null;   // {id,type,company_name,full_name}[] for the picker
 
     /* ── tiny helpers ─────────────────────────────────────── */
     function esc(s) {
@@ -201,6 +202,11 @@
             '</div>' +
             '<div class="ws-body">' +
                 '<aside class="ws-side">' +
+                    '<div class="ws-client-pick">' +
+                        '<label class="ws-client-label" for="wsClientSelect">Клиент (за досие)</label>' +
+                        '<select id="wsClientSelect" class="field"><option value="">— Без клиент —</option></select>' +
+                        '<p class="ws-client-hint">Ако избереш клиент, преземените документи се зачувуваат во неговото досие.</p>' +
+                    '</div>' +
                     '<div class="ws-side-head">Вредности на променливите</div>' +
                     '<div id="wsVarFields" class="ws-var-fields"></div>' +
                     '<div class="ws-side-foot">' +
@@ -237,9 +243,107 @@
             scheduleBreaks();          // chip text changed → line wrapping may shift
         });
 
+        var clientSel = ov.querySelector('#wsClientSelect');
+        if (clientSel) clientSel.addEventListener('change', function () { state.clientId = this.value; });
+
         window.addEventListener('resize', scheduleBreaks);
 
         mounted = true;
+    }
+
+    // Populate the client picker (lazy, cached). Restores the current selection.
+    function populateClients() {
+        var sel = document.getElementById('wsClientSelect');
+        if (!sel) return;
+        function fill(list) {
+            var cur = state.clientId || '';
+            var html = '<option value="">— Без клиент —</option>';
+            list.forEach(function (c) {
+                var nm = c.type === 'company' ? (c.company_name || 'Правно лице') : (c.full_name || 'Физичко лице');
+                html += '<option value="' + c.id + '">' + escAttr(nm) + '</option>';
+            });
+            sel.innerHTML = html;
+            sel.value = cur;
+        }
+        if (_clientsCache) { fill(_clientsCache); return; }
+        fetch('api/client_api.php?action=get_all')
+            .then(function (r) { return r.json(); })
+            .then(function (res) { if (res.success) { _clientsCache = res.data || []; fill(_clientsCache); } })
+            .catch(function () {});
+    }
+
+    // Record the just-downloaded documents into the selected client's history.
+    // PDF (editor) docs go through the OS print dialog, where the browser can't
+    // tell Save from Cancel — so if any editor doc is involved we ask first.
+    // Imported .docx always downloads, so a pure-.docx set records silently.
+    function recordGeneration(docs) {
+        if (!state.clientId) return;
+        var list = docs || [];
+        var items = list.map(function (d) { return { id: d.id, name: d.name, kind: d.kind || 'editor' }; });
+        if (!items.length) return;
+
+        function doPost() {
+            var fd = new FormData();
+            fd.append('action', 'record_generation');
+            fd.append('client_id', state.clientId);
+            fd.append('template_id', state.id || '');
+            fd.append('template_name', state.name || '');
+            fd.append('values', JSON.stringify(state.values || {}));
+            fd.append('items', JSON.stringify(items));
+            fetch('api/document_api.php', { method: 'POST', body: fd })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res.success || !window.toast) return;
+                    var nm = clientNameById(state.clientId);
+                    if (nm) window.toast('Зачувано во досието на', 'success', { link: { text: nm, href: 'klient.php?id=' + state.clientId + '&tab=documents' } });
+                    else window.toast('Зачувано во досието на клиентот.', 'success');
+                })
+                .catch(function () {});
+        }
+
+        var hasEditor = false;
+        for (var i = 0; i < list.length; i++) { if ((list[i].kind || 'editor') !== 'imported') { hasEditor = true; break; } }
+
+        if (hasEditor && window.confirmDialog) {
+            var nm = clientNameById(state.clientId) || 'клиентот';
+            window.confirmDialog({
+                title: 'Зачувај во досие',
+                message: 'Дали ги зачувавте документите? Ако да, да ги додадам во досието на „' + nm + '“?',
+                confirmText: 'Додади во досие',
+                cancelText: 'Не додавај',
+                onConfirm: doPost
+            });
+        } else {
+            doPost();
+        }
+    }
+
+    function clientNameById(id) {
+        var list = _clientsCache || [];
+        for (var i = 0; i < list.length; i++) {
+            if (String(list[i].id) === String(id)) {
+                var c = list[i];
+                return c.type === 'company' ? (c.company_name || 'клиентот') : (c.full_name || 'клиентот');
+            }
+        }
+        return '';
+    }
+
+    // Public: download a single document by id with given values (re-generate
+    // from a client's history). Editor → print PDF; imported → fill .docx.
+    function downloadSingle(templateId, docId, values) {
+        ensureMounted();
+        ensureQuill(function () {
+            fetch('api/document_api.php?action=get&id=' + encodeURIComponent(docId))
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res.success || !res.data) { if (window.toast) window.toast('Документот не е пронајден.', 'error'); return; }
+                    var doc = res.data;
+                    if (doc.kind === 'imported') downloadImportedFilled(doc, values || {});
+                    else printDoc(doc, values || {});
+                })
+                .catch(function () { if (window.toast) window.toast('Грешка при преземање.', 'error'); });
+        });
     }
 
     function markSaved(text) {
@@ -803,6 +907,7 @@
         ov.removeAttribute('aria-hidden');
         document.body.classList.add('ws-open');
         setTitle();
+        populateClients();
         if (!state.built) loadAndBuild();
     }
     function minimize() {
@@ -856,6 +961,9 @@
                 markSaved('Готово');
                 if (window.toast) window.toast('Преземањето е завршено.', 'success');
                 setTimeout(function () { markSaved(''); }, 2500);
+                // Record into the client's dossier only after the whole
+                // download/print sequence has actually run (dialogs closed).
+                recordGeneration(ordered);
                 return;
             }
             var doc = ordered[i];
@@ -926,7 +1034,7 @@
     }
 
     /* ── public API + boot ────────────────────────────────── */
-    window.DraftWorkspace = { open: open, expand: expand, close: close };
+    window.DraftWorkspace = { open: open, expand: expand, close: close, downloadSingle: downloadSingle };
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initPill);
