@@ -44,6 +44,16 @@ $ACTIONS = [
     'client.delete'      => ['Клиент во корпа', 'delete'],
     'client.restore'     => ['Вратен клиент', 'create'],
     'client.purge'       => ['Трајно избришан клиент', 'delete'],
+    'case.create'              => ['Креиран предмет', 'create'],
+    'case.update'              => ['Уреден предмет', 'edit'],
+    'case.archive'             => ['Архивиран предмет', 'archive'],
+    'case.unarchive'           => ['Вратен од архива', 'create'],
+    'case.delete'              => ['Предмет во корпа', 'delete'],
+    'case.restore'             => ['Вратен предмет', 'create'],
+    'case.purge'               => ['Трајно избришан предмет', 'delete'],
+    'case.admin_number'        => ['Додаден админ. број', 'edit'],
+    'case.admin_number_edit'   => ['Уреден админ. број', 'edit'],
+    'case.admin_number_delete' => ['Избришан админ. број', 'delete'],
 ];
 
 $MK_MONTHS = ['јан','фев','мар','апр','мај','јун','јул','авг','сеп','окт','ное','дек'];
@@ -104,7 +114,15 @@ function fakta_audit_when(string $s, array $months): string
                         <td class="audit-when"><?= htmlspecialchars(fakta_audit_when($r['created_at'], $MK_MONTHS)) ?></td>
                         <td><?= htmlspecialchars($who) ?></td>
                         <td><span class="audit-badge audit-badge--<?= $meta[1] ?>"><?= htmlspecialchars($meta[0]) ?></span></td>
-                        <td class="audit-detail"><?= htmlspecialchars($r['detail'] ?? '') ?></td>
+                        <td class="audit-detail"><?php
+                            $detail = $r['detail'] ?? '';
+                            if ($r['entity'] === 'case' && !empty($r['entity_id']) && $r['action'] !== 'case.purge') {
+                                $label = $detail !== '' ? $detail : ('Предмет #' . (int) $r['entity_id']);
+                                echo '<a class="audit-link" href="' . htmlspecialchars(fakta_url('predmet.php?id=' . (int) $r['entity_id'])) . '">' . htmlspecialchars($label) . '</a>';
+                            } else {
+                                echo htmlspecialchars($detail);
+                            }
+                        ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
