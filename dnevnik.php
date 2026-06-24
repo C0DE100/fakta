@@ -54,6 +54,7 @@ $ACTIONS = [
     'case.admin_number'        => ['Додаден админ. број', 'edit'],
     'case.admin_number_edit'   => ['Уреден админ. број', 'edit'],
     'case.admin_number_delete' => ['Избришан админ. број', 'delete'],
+    'case.import'              => ['Импортирани предмети (CSV)', 'create'],
 ];
 
 $MK_MONTHS = ['јан','фев','мар','апр','мај','јун','јул','авг','сеп','окт','ное','дек'];

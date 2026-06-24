@@ -3,6 +3,7 @@
 define('FAKTA_API', true);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../classes/CaseFile.php';
+require_once __DIR__ . '/../classes/CaseImporter.php';
 
 require_login();
 
@@ -196,6 +197,36 @@ try {
         case 'suggest_basis': {
             $term = trim($_GET['q'] ?? '');
             echo json_encode(['success' => true, 'data' => $cases->suggestBasis($companyId, $term)]);
+            break;
+        }
+
+        case 'csv_validate': {
+            if (empty($_FILES['file']['tmp_name']) || !is_uploaded_file($_FILES['file']['tmp_name'])) {
+                echo json_encode(['success' => false, 'message' => 'Прикачи CSV датотека.']);
+                exit;
+            }
+            $csv = (string) file_get_contents($_FILES['file']['tmp_name']);
+            $importer = new CaseImporter($db, $cases);
+            echo json_encode(['success' => true] + $importer->prepare($companyId, $csv));
+            break;
+        }
+
+        case 'csv_import': {
+            if (empty($_FILES['file']['tmp_name']) || !is_uploaded_file($_FILES['file']['tmp_name'])) {
+                echo json_encode(['success' => false, 'message' => 'Прикачи CSV датотека.']);
+                exit;
+            }
+            $csv = (string) file_get_contents($_FILES['file']['tmp_name']);
+            $importer = new CaseImporter($db, $cases);
+            $res = $importer->import($companyId, $csv, current_user()['id'] ?? null);
+            if (isset($res['fatal'])) {
+                echo json_encode(['success' => false, 'message' => $res['fatal']]);
+                exit;
+            }
+            if (($res['imported'] ?? 0) > 0) {
+                fakta_audit('case.import', 'case', null, $res['imported'] . ' предмети импортирани од CSV');
+            }
+            echo json_encode(['success' => true] + $res);
             break;
         }
 

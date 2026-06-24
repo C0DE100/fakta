@@ -70,48 +70,81 @@ class CaseFile
      */
     public function create(int $companyId, array $data, ?int $createdBy): int
     {
-        $parties = $this->normalizeParties($data['parties'] ?? []);
-        if (!$this->hasClientParty($parties)) {
-            throw new InvalidArgumentException('Предметот мора да има барем една странка-клиент.');
-        }
-
         $pdo = $this->db->getConnection();
         $pdo->beginTransaction();
         try {
-            $year = (int) date('Y');
-            $seq  = $this->nextCaseSeq($companyId, $year);
-
-            $stmt = $pdo->prepare(
-                "INSERT INTO cases (company_id, case_seq, case_year, basis, value_amount, value_currency, created_by, created_at)
-                 VALUES (:cid, :seq, :year, :basis, :amount, :currency, :by, NOW())"
-            );
-            $stmt->execute([
-                ':cid'      => $companyId,
-                ':seq'      => $seq,
-                ':year'     => $year,
-                ':basis'    => $this->nz($data['basis'] ?? null),
-                ':amount'   => $this->money($data['value_amount'] ?? null),
-                ':currency' => ($data['value_currency'] ?? 'ден') === 'евра' ? 'евра' : 'ден',
-                ':by'       => $createdBy,
-            ]);
-            $caseId = (int) $pdo->lastInsertId();
-
-            $this->insertParties($companyId, $caseId, $parties);
-            $this->replaceAssignees($companyId, $caseId, $data['assignees'] ?? []);
-
-            $adminNo = trim((string) ($data['admin_number'] ?? ''));
-            if ($adminNo !== '') {
-                $this->addAdminNumberRaw($companyId, $caseId, $adminNo, $data['admin_note'] ?? null);
-            }
-
-            $this->rebuildSearchText($companyId, $caseId);
-
+            $caseId = $this->insertCaseTx($companyId, $data, $createdBy);
             $pdo->commit();
             return $caseId;
         } catch (Throwable $e) {
             $pdo->rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Bulk-create cases inside ONE transaction (CSV import). Rows must already
+     * be validated/resolved (client_id set on the client party). All-or-nothing:
+     * any failure rolls the whole batch back. Returns ['imported' => int].
+     */
+    public function importBatch(int $companyId, array $rows, ?int $createdBy): array
+    {
+        $pdo = $this->db->getConnection();
+        $pdo->beginTransaction();
+        $imported = 0;
+        try {
+            foreach ($rows as $data) {
+                $this->insertCaseTx($companyId, $data, $createdBy);
+                $imported++;
+            }
+            $pdo->commit();
+            return ['imported' => $imported];
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Insert one case + parties/assignees/admin number. ASSUMES an active
+     * transaction, so it can be shared by create() and importBatch().
+     */
+    private function insertCaseTx(int $companyId, array $data, ?int $createdBy): int
+    {
+        $parties = $this->normalizeParties($data['parties'] ?? []);
+        if (!$this->hasClientParty($parties)) {
+            throw new InvalidArgumentException('Предметот мора да има барем една странка-клиент.');
+        }
+
+        $pdo  = $this->db->getConnection();
+        $year = (int) date('Y');
+        $seq  = $this->nextCaseSeq($companyId, $year);
+
+        $stmt = $pdo->prepare(
+            "INSERT INTO cases (company_id, case_seq, case_year, basis, value_amount, value_currency, created_by, created_at)
+             VALUES (:cid, :seq, :year, :basis, :amount, :currency, :by, NOW())"
+        );
+        $stmt->execute([
+            ':cid'      => $companyId,
+            ':seq'      => $seq,
+            ':year'     => $year,
+            ':basis'    => $this->nz($data['basis'] ?? null),
+            ':amount'   => $this->money($data['value_amount'] ?? null),
+            ':currency' => ($data['value_currency'] ?? 'ден') === 'евра' ? 'евра' : 'ден',
+            ':by'       => $createdBy,
+        ]);
+        $caseId = (int) $pdo->lastInsertId();
+
+        $this->insertParties($companyId, $caseId, $parties);
+        $this->replaceAssignees($companyId, $caseId, $data['assignees'] ?? []);
+
+        $adminNo = trim((string) ($data['admin_number'] ?? ''));
+        if ($adminNo !== '') {
+            $this->addAdminNumberRaw($companyId, $caseId, $adminNo, $data['admin_note'] ?? null);
+        }
+
+        $this->rebuildSearchText($companyId, $caseId);
+        return $caseId;
     }
 
     /* =====================================================================

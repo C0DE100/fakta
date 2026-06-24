@@ -95,7 +95,7 @@ $(function () {
             return;
         }
         var html = state.view === 'list'
-            ? '<div class="case-list">' + rows.map(listRow).join('') + '</div>'
+            ? '<div class="case-list">' + listHeader() + rows.map(listRow).join('') + '</div>'
             : '<div class="case-grid">' + rows.map(card).join('') + '</div>';
         $('#casesList').html(html);
 
@@ -105,9 +105,20 @@ $(function () {
         $('#casesPager').html(p);
     }
 
-    function partyBits(role, name, fallback) {
-        return '<span class="case-role">' + esc(role || fallback) + '</span>'
-             + '<span class="case-pname">' + esc(name || '—') + '</span>';
+    // A clearly-labelled "Label: value" block used across the card.
+    function fld(label, valueHtml) {
+        return '<div class="case-fld"><span class="case-fld-l">' + label + '</span>'
+            + '<span class="case-fld-v">' + valueHtml + '</span></div>';
+    }
+    // The party's role (својство), shown as a small chip next to its name.
+    function roleChip(role) {
+        return role ? ' <span class="case-role-chip">' + esc(role) + '</span>' : '';
+    }
+    function muted(txt) { return '<span class="case-muted">' + esc(txt) + '</span>'; }
+    function statusBadge(r) {
+        return r.archived_at
+            ? '<span class="case-badge case-badge--archived">Архивиран</span>'
+            : '<span class="case-badge case-badge--active">Активен</span>';
     }
 
     function actionsHtml(r) {
@@ -134,40 +145,58 @@ $(function () {
         var value = fmtMoney(r.value_amount, r.value_currency);
         return '<div class="case-card" data-id="' + r.id + '">'
             + actionsHtml(r)
-            + '<div class="case-card-head">'
-            +   '<span class="case-num">' + esc(r.case_number) + '</span>'
-            +   (r.archived_at ? '<span class="case-badge case-badge--archived">Архивиран</span>' : '')
+            + '<div class="case-card-num">'
+            +   '<span class="case-fld-l">Број на предмет</span>'
+            +   '<div class="case-card-num-row"><span class="case-num">' + esc(r.case_number) + '</span>' + statusBadge(r) + '</div>'
             + '</div>'
-            + '<div class="case-parties">'
-            +   '<div class="case-party">' + partyBits(r.client_role, r.client_name, 'Странка') + '</div>'
-            +   '<div class="case-vs">против</div>'
-            +   '<div class="case-party">' + partyBits(r.opponent_role, r.opponent_name, 'Спротивна странка') + '</div>'
-            + '</div>'
-            + '<div class="case-basis">' + esc(r.basis || '—') + '</div>'
-            + '<div class="case-meta">'
-            +   (value ? '<span class="case-chip case-chip--value">' + esc(value) + '</span>' : '')
-            +   (r.admin_number ? '<span class="case-chip">№ ' + esc(r.admin_number) + '</span>' : '')
+            + fld('Основ', r.basis ? esc(r.basis) : muted('Нема основ'))
+            + fld('Наш клиент', (r.client_name ? esc(r.client_name) : muted('—')) + roleChip(r.client_role))
+            + fld('Спротивна странка', r.opponent_name ? (esc(r.opponent_name) + roleChip(r.opponent_role)) : muted('Нема'))
+            + '<div class="case-card-two">'
+            +   fld('Вредност', value ? esc(value) : muted('—'))
+            +   fld('Административен број', r.admin_number ? esc(r.admin_number) : muted('—'))
             + '</div>'
             + '<div class="case-card-footer">'
-            +   '<div class="case-assignees">' + (assigneeAvatars(r.assignees) || '<span class="case-noassign">Незададен</span>') + '</div>'
-            +   (r.created_by_name ? '<span class="case-creator" title="Креирано од ' + esc(r.created_by_name) + '">' + esc(r.created_by_name) + '</span>' : '')
+            +   '<div class="case-foot-block">'
+            +     '<span class="case-fld-l">Задолжени</span>'
+            +     '<div class="case-assignees">' + (assigneeAvatars(r.assignees) || muted('Никој')) + '</div>'
+            +   '</div>'
+            +   (r.created_by_name
+                    ? '<div class="case-foot-block case-foot-right"><span class="case-fld-l">Креирал</span>'
+                      + '<span class="case-creator">' + esc(r.created_by_name) + '</span></div>'
+                    : '')
             + '</div>'
+            + '</div>';
+    }
+
+    // Column titles for the list view (so each value is self-explanatory).
+    function listHeader() {
+        return '<div class="case-list-head">'
+            + '<span class="case-cell-num">Број на предмет</span>'
+            + '<span class="case-cell-parties">Странки</span>'
+            + '<span class="case-cell-basis">Основ</span>'
+            + '<span class="case-cell-value">Вредност</span>'
+            + '<span class="case-cell-admin">Админ. број</span>'
+            + '<span class="case-cell-assignees">Задолжени</span>'
+            + '<span class="case-cell-actions"></span>'
             + '</div>';
     }
 
     function listRow(r) {
         var value = fmtMoney(r.value_amount, r.value_currency);
         return '<div class="case-row" data-id="' + r.id + '">'
-            + '<div class="case-row-num">' + esc(r.case_number) + (r.archived_at ? '<span class="case-badge case-badge--archived">арх.</span>' : '') + '</div>'
-            + '<div class="case-row-body">'
-            +   '<div class="case-row-parties"><strong>' + esc(r.client_name || '—') + '</strong>'
-            +     '<span class="case-row-vs">против</span><strong>' + esc(r.opponent_name || '—') + '</strong></div>'
-            +   '<div class="case-row-basis">' + esc(r.basis || '—') + '</div>'
+            + '<div class="case-cell case-cell-num"><span class="case-num-sm">' + esc(r.case_number) + '</span>'
+            +   (r.archived_at ? '<span class="case-badge case-badge--archived">арх.</span>' : '') + '</div>'
+            + '<div class="case-cell case-cell-parties">'
+            +   '<strong>' + esc(r.client_name || '—') + '</strong>' + roleChip(r.client_role)
+            +   '<span class="case-row-vs">против</span>'
+            +   '<strong>' + esc(r.opponent_name || '—') + '</strong>' + roleChip(r.opponent_role)
             + '</div>'
-            + '<div class="case-row-value">' + (value ? esc(value) : '') + '</div>'
-            + '<div class="case-row-admin">' + (r.admin_number ? '№ ' + esc(r.admin_number) : '') + '</div>'
-            + '<div class="case-row-assignees">' + (assigneeAvatars(r.assignees) || '<span class="case-noassign">—</span>') + '</div>'
-            + '<div class="case-row-actions">' + (CAN_MANAGE ? actionsHtml(r).replace('client-card-actions', 'case-row-actions-inner') : '') + '</div>'
+            + '<div class="case-cell case-cell-basis">' + (r.basis ? esc(r.basis) : muted('—')) + '</div>'
+            + '<div class="case-cell case-cell-value">' + (value ? esc(value) : muted('—')) + '</div>'
+            + '<div class="case-cell case-cell-admin">' + (r.admin_number ? esc(r.admin_number) : muted('—')) + '</div>'
+            + '<div class="case-cell case-cell-assignees">' + (assigneeAvatars(r.assignees) || muted('—')) + '</div>'
+            + '<div class="case-cell case-cell-actions">' + (CAN_MANAGE ? actionsHtml(r).replace('client-card-actions', 'case-row-actions-inner') : '') + '</div>'
             + '</div>';
     }
 
@@ -373,8 +402,9 @@ $(function () {
         $('#assigneeSearch').val('');
         renderSelectedAssignees();
         $('#caseModalTitle').text('Нов предмет');
-        $('#caseModalSub').text('Внеси ги основните податоци и странките');
+        $('#caseModalSub').text('Пополни ги полињата по секции и зачувај');
         $('#basisSuggest').hide();
+        setTimeout(function () { $('#caseBasis').focus(); }, 60);
     }
 
     $('#caseNewBtn').on('click', function () { resetModal(); openModal(); });
@@ -432,10 +462,10 @@ $(function () {
     $('#caseForm').on('submit', function (e) {
         e.preventDefault();
         var parties = collectParties();
+        if (!$('#caseBasis').val().trim()) { showAlert('Внеси основ (што е предметот).'); $('#caseBasis').focus(); return; }
         if (!parties.some(function (p) { return p.side === 'client'; })) {
             showAlert('Додај барем една странка-клиент (избери клиент).'); return;
         }
-        if (!$('#caseBasis').val().trim()) { showAlert('Основот е задолжителен.'); return; }
 
         var data = {
             basis: $('#caseBasis').val().trim(),
@@ -530,6 +560,124 @@ $(function () {
             $(this).html(clientOptions(cur));
         });
     }
+
+    /* ---------------- CSV import ---------------- */
+
+    var csvFile = null;
+
+    function openCsv() {
+        csvFile = null;
+        $('#csvFile').val('');
+        $('#csvFileName').text('');
+        $('#csvPreview').hide();
+        $('#csvTable').empty();
+        $('#csvSummary').empty();
+        $('#csvAlert').hide();
+        $('#csvImportConfirm').prop('disabled', true).text('Импортирај');
+        $('#csvModal').addClass('open').removeAttr('aria-hidden');
+        $('body').addClass('modal-open');
+    }
+    function closeCsv() {
+        $('#csvModal').removeClass('open').attr('aria-hidden', 'true');
+        $('body').removeClass('modal-open');
+    }
+    function csvAlert(msg) { $('#csvAlert').removeClass('alert-ok').addClass('alert-err').text(msg).show(); }
+
+    $('#caseImportBtn').on('click', openCsv);
+    $('#csvClose, #csvCancel').on('click', closeCsv);
+    $('#csvModal').on('click', function (e) { if (e.target === this) closeCsv(); });
+
+    // Downloadable template (UTF-8 BOM so Excel shows Cyrillic correctly).
+    $('#csvTemplateBtn').on('click', function () {
+        var header = ['Основ', 'Вредност', 'Валута', 'Административен број', 'Клиент', 'Својство на клиент',
+            'Спротивна странка', 'Тип на спротивна', 'Својство на спротивна', 'Адвокат на спротивна', 'Зададено на'];
+        var example = ['Оштета на возило', '15000.50', 'евра', 'П1-123/24', 'Име на постоечки клиент', 'Тужител',
+            'Фирма А', 'правно', 'Тужен', 'адв. Славе', ''];
+        var csv = '﻿' + header.join(',') + '\n' + example.join(',') + '\n';
+        var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'predmeti-shablon.csv';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+    });
+
+    $('#csvFile').on('change', function () {
+        csvFile = this.files && this.files[0] ? this.files[0] : null;
+        if (!csvFile) return;
+        $('#csvFileName').text(csvFile.name);
+        $('#csvAlert').hide();
+        validateCsv();
+    });
+
+    function csvForm(action) {
+        var fd = new FormData();
+        fd.append('action', action);
+        fd.append('file', csvFile);
+        return $.ajax({ url: API, type: 'POST', data: fd, processData: false, contentType: false, dataType: 'json' });
+    }
+
+    function validateCsv() {
+        $('#csvImportConfirm').prop('disabled', true);
+        $('#csvSummary').html('<span class="csv-summary-msg">Се проверува…</span>');
+        $('#csvPreview').show();
+        $('#csvTable').empty();
+        csvForm('csv_validate').done(function (res) {
+            if (!res.success) { $('#csvPreview').hide(); csvAlert(res.message || 'Грешка.'); return; }
+            if (res.fatal) { $('#csvPreview').hide(); csvAlert(res.fatal); return; }
+            renderCsvPreview(res);
+        }).fail(function () { $('#csvPreview').hide(); csvAlert('Грешка при проверка на датотеката.'); });
+    }
+
+    function renderCsvPreview(res) {
+        $('#csvSummary').html(
+            '<span class="csv-pill csv-pill--ok">' + res.valid + ' валидни</span>' +
+            (res.invalid ? '<span class="csv-pill csv-pill--err">' + res.invalid + ' со грешки</span>' : '') +
+            '<span class="csv-summary-msg">од вкупно ' + res.total + ' редови</span>'
+        );
+
+        var rows = res.rows || [];
+        var head = '<thead><tr><th>Ред</th><th></th><th>Основ</th><th>Клиент</th><th>Спротивна</th><th>Вредност</th><th>Забелешки</th></tr></thead>';
+        var body = rows.slice(0, 200).map(function (r) {
+            var p = r.preview || {};
+            var msgs = (r.errors || []).map(function (m) { return '<span class="csv-msg csv-msg--err">' + esc(m) + '</span>'; })
+                .concat((r.warnings || []).map(function (m) { return '<span class="csv-msg csv-msg--warn">' + esc(m) + '</span>'; }))
+                .join('');
+            return '<tr class="' + (r.ok ? '' : 'csv-row-bad') + '">'
+                + '<td class="csv-line">' + r.line + '</td>'
+                + '<td>' + (r.ok ? '<span class="csv-tick csv-tick--ok">✓</span>' : '<span class="csv-tick csv-tick--err">✕</span>') + '</td>'
+                + '<td>' + esc(p.basis) + '</td>'
+                + '<td>' + esc(p.client) + '</td>'
+                + '<td>' + esc(p.opponent || '—') + '</td>'
+                + '<td>' + esc(p.value || '—') + '</td>'
+                + '<td>' + (msgs || '<span class="csv-msg csv-msg--ok">Во ред</span>') + '</td>'
+                + '</tr>';
+        }).join('');
+        $('#csvTable').html(head + '<tbody>' + body + '</tbody>');
+        $('#csvPreview .csv-more').remove();
+        if (rows.length > 200) {
+            $('.csv-table-wrap').after('<p class="csv-more">…прикажани први 200 од ' + rows.length + ' редови</p>');
+        }
+
+        if (res.valid > 0) {
+            $('#csvImportConfirm').prop('disabled', false).text('Импортирај ' + res.valid + ' предмети');
+        } else {
+            $('#csvImportConfirm').prop('disabled', true).text('Импортирај');
+        }
+    }
+
+    $('#csvImportConfirm').on('click', function () {
+        if (!csvFile) return;
+        var $btn = $(this).prop('disabled', true).text('Се импортира…');
+        csvForm('csv_import').done(function (res) {
+            if (!res.success) { csvAlert(res.message || res.fatal || 'Грешка.'); $btn.prop('disabled', false); return; }
+            closeCsv();
+            toast('Импортирани ' + (res.imported || 0) + ' предмети' + (res.invalid ? ' · ' + res.invalid + ' прескокнати' : '') + '.', 'success');
+            state.page = 1; state.status = 'active';
+            $('.case-tab').removeClass('is-active').filter('[data-status="active"]').addClass('is-active');
+            loadList();
+        }).fail(function () { csvAlert('Грешка при импорт.'); $btn.prop('disabled', false).text('Импортирај'); });
+    });
 
     /* ---------------- trash ---------------- */
 

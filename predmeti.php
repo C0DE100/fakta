@@ -70,6 +70,11 @@ $canManage = current_role() !== 'praktikant';
                 </button>
                 <?php endif; ?>
 
+                <button id="caseImportBtn" class="btn-secondary" title="Импортирај предмети од CSV">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>
+                    Импорт
+                </button>
+
                 <button id="caseNewBtn" class="btn-new-client">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
                     Креирај предмет
@@ -104,25 +109,28 @@ $canManage = current_role() !== 'praktikant';
             <form id="caseForm" autocomplete="off">
                 <input type="hidden" id="caseId" value="">
 
-                <!-- Основни податоци -->
-                <div class="case-section">
-                    <div class="case-section-head">
+                <!-- 1 · Basics -->
+                <section class="case-block">
+                    <div class="case-block-head">
+                        <span class="case-block-num">1</span>
                         <div>
-                            <span class="case-section-title">Основни податоци</span>
-                            <span class="case-section-desc">Предмет бројот се генерира автоматски (пр. 1/26)</span>
+                            <h3 class="case-block-title">Основни податоци</h3>
+                            <p class="case-block-sub">Што е предметот и колку вреди</p>
                         </div>
                     </div>
-                    <div class="case-form-grid">
-                        <div class="case-field case-field--full">
-                            <label for="caseBasis" class="case-label">Основ <span class="case-req">*</span></label>
-                            <div style="position:relative">
-                                <input type="text" class="field" id="caseBasis" placeholder="пр. Оштета на возило, Работен спор, Развод…" required>
-                                <div id="basisSuggest" class="basis-suggest" style="display:none"></div>
-                            </div>
-                            <span class="case-hint">Насловот на предметот. Ќе ви предложиме слични постоечки основи за конзистентност.</span>
+
+                    <div class="case-hero-field">
+                        <label for="caseBasis" class="case-hero-label">Што е предметот? <span class="case-req">*</span></label>
+                        <div style="position:relative">
+                            <input type="text" class="field field--hero" id="caseBasis" placeholder="пр. Оштета на возило, Работен спор, Развод…" required>
+                            <div id="basisSuggest" class="basis-suggest" style="display:none"></div>
                         </div>
+                        <span class="case-hint">Ова е <strong>основот</strong> — насловот на предметот. Ќе ви предложиме слични постоечки основи.</span>
+                    </div>
+
+                    <div class="case-form-grid case-form-grid--2">
                         <div class="case-field">
-                            <label for="caseValue" class="case-label">Вредност на спорот</label>
+                            <label for="caseValue" class="case-label">Вредност на спорот <span class="case-opt">(опционално)</span></label>
                             <div style="display:flex; gap:0.5rem">
                                 <input type="text" inputmode="decimal" class="field" id="caseValue" placeholder="0,00" style="flex:1">
                                 <select id="caseCurrency" class="field" style="max-width:6.5rem">
@@ -132,49 +140,58 @@ $canManage = current_role() !== 'praktikant';
                             </div>
                         </div>
                         <div class="case-field" id="adminNumberRow">
-                            <label for="caseAdminNumber" class="case-label">Административен број</label>
-                            <input type="text" class="field" id="caseAdminNumber" placeholder="службен број (опц.)">
-                            <span class="case-hint">Бројот во институцијата. Подоцна може да го менувате со историја.</span>
+                            <label for="caseAdminNumber" class="case-label">Административен број <span class="case-opt">(опционално)</span></label>
+                            <input type="text" class="field" id="caseAdminNumber" placeholder="службен број во институција">
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <!-- Наши странки (client side) -->
-                <div class="case-section">
-                    <div class="case-section-head">
+                <!-- 2 · Parties -->
+                <section class="case-block">
+                    <div class="case-block-head">
+                        <span class="case-block-num">2</span>
                         <div>
-                            <span class="case-section-title">Наши странки <span class="case-section-count">клиенти</span></span>
-                            <span class="case-section-desc">Барем една странка мора да биде клиент на канцеларијата</span>
+                            <h3 class="case-block-title">Странки</h3>
+                            <p class="case-block-sub">Кој е во предметот — наш клиент и спротивна страна</p>
                         </div>
-                        <button type="button" class="case-add-btn" data-add-party="client">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
-                            Додај странка
-                        </button>
                     </div>
-                    <div id="clientPartyList" class="case-party-list"></div>
-                </div>
 
-                <!-- Спротивни странки (opponent side) -->
-                <div class="case-section">
-                    <div class="case-section-head">
-                        <div>
-                            <span class="case-section-title">Спротивни странки</span>
-                            <span class="case-section-desc">Лица или фирми спротивни на клиентот — не се чуваат како клиенти</span>
+                    <div class="case-subgroup">
+                        <div class="case-subhead">
+                            <div>
+                                <span class="case-subhead-title">Наши странки <span class="case-section-count">клиенти</span></span>
+                                <span class="case-subhead-desc">Барем една мора да биде клиент на канцеларијата</span>
+                            </div>
+                            <button type="button" class="case-add-btn" data-add-party="client">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                                Додај
+                            </button>
                         </div>
-                        <button type="button" class="case-add-btn" data-add-party="opponent">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
-                            Додај странка
-                        </button>
+                        <div id="clientPartyList" class="case-party-list"></div>
                     </div>
-                    <div id="opponentPartyList" class="case-party-list"></div>
-                </div>
 
-                <!-- Зададено на (assignees) -->
-                <div class="case-section">
-                    <div class="case-section-head">
+                    <div class="case-subgroup">
+                        <div class="case-subhead">
+                            <div>
+                                <span class="case-subhead-title">Спротивни странки</span>
+                                <span class="case-subhead-desc">Не се чуваат како клиенти на канцеларијата</span>
+                            </div>
+                            <button type="button" class="case-add-btn" data-add-party="opponent">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                                Додај
+                            </button>
+                        </div>
+                        <div id="opponentPartyList" class="case-party-list"></div>
+                    </div>
+                </section>
+
+                <!-- 3 · Assignees -->
+                <section class="case-block">
+                    <div class="case-block-head">
+                        <span class="case-block-num">3</span>
                         <div>
-                            <span class="case-section-title">Зададено на</span>
-                            <span class="case-section-desc">Вработени што работат на предметот</span>
+                            <h3 class="case-block-title">Задолжени</h3>
+                            <p class="case-block-sub">Кој ќе работи на предметот (опционално)</p>
                         </div>
                     </div>
                     <div class="assignee-picker">
@@ -185,7 +202,7 @@ $canManage = current_role() !== 'praktikant';
                             <div id="assigneeDropdown" class="assignee-dropdown" style="display:none"></div>
                         </div>
                     </div>
-                </div>
+                </section>
 
                 <div class="form-actions">
                     <button type="button" data-case-close class="btn-modal-cancel">Откажи</button>
@@ -242,6 +259,56 @@ $canManage = current_role() !== 'praktikant';
                     <button type="submit" class="btn-modal-save">Зачувај клиент</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         CSV import modal
+    ============================================================ -->
+    <div id="csvModal" class="modal-overlay" aria-hidden="true">
+        <div class="modal-box modal-box--wide" role="dialog" aria-modal="true">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title">Импорт на предмети од CSV</h2>
+                    <p class="modal-subtitle">Прикачи датотека — секој ред е еден предмет</p>
+                </div>
+                <button id="csvClose" class="modal-close" aria-label="Затвори">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            <div class="csv-intro">
+                <p class="csv-intro-text">
+                    Колони: <strong>Основ</strong> и <strong>Клиент</strong> се задолжителни. Клиентот мора да постои во системот
+                    (се совпаѓа по име). Опционални: Вредност, Валута, Административен број, Својство на клиент,
+                    Спротивна странка, Тип на спротивна, Својство на спротивна, Адвокат на спротивна, Зададено на.
+                </p>
+                <button type="button" id="csvTemplateBtn" class="btn-secondary">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+                    Преземи шаблон
+                </button>
+            </div>
+
+            <label id="csvDrop" class="csv-drop">
+                <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                <span class="csv-drop-text">Кликни за да избереш CSV датотека</span>
+                <span class="csv-drop-name" id="csvFileName"></span>
+            </label>
+
+            <div id="csvAlert" style="display:none;"></div>
+
+            <div id="csvPreview" style="display:none;">
+                <div class="csv-summary" id="csvSummary"></div>
+                <div class="csv-table-wrap">
+                    <table class="csv-table" id="csvTable"></table>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" id="csvCancel" class="btn-modal-cancel">Откажи</button>
+                <button type="button" id="csvImportConfirm" class="btn-modal-save" disabled>Импортирај</button>
+            </div>
         </div>
     </div>
 

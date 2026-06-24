@@ -4818,3 +4818,226 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .case-admin-item.editing .btn-modal-save,
 .case-admin-item.editing .btn-modal-cancel { flex: 0 0 auto; padding: 0.45rem 0.85rem; font-size: 0.8rem; }
 [data-theme="dark"] .admin-edit, [data-theme="dark"] .admin-del { background: #2b2b31; border-color: #3c3c44; color: #9898a6; }
+
+/* ================================================
+   CSV import modal
+   ================================================ */
+.csv-intro { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 0.85rem; }
+.csv-intro-text { font-size: 0.78rem; color: #78716c; line-height: 1.45; flex: 1; }
+.csv-intro .btn-secondary { flex-shrink: 0; display: inline-flex; align-items: center; gap: 0.4rem; }
+
+.csv-drop {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem;
+    padding: 1.5rem; border: 1.5px dashed #d6cfc4; border-radius: 0.75rem;
+    color: #a8a29e; cursor: pointer; text-align: center;
+    transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+}
+.csv-drop:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.csv-drop-text { font-size: 0.85rem; font-weight: 500; }
+.csv-drop-name { font-size: 0.78rem; color: #57534e; font-weight: 600; }
+
+.csv-summary { display: flex; align-items: center; gap: 0.5rem; margin: 0.85rem 0 0.5rem; flex-wrap: wrap; }
+.csv-pill { font-size: 0.72rem; font-weight: 700; border-radius: 9999px; padding: 0.15rem 0.6rem; }
+.csv-pill--ok  { background: #ecfdf5; color: #047857; }
+.csv-pill--err { background: #fef2f2; color: #b91c1c; }
+.csv-summary-msg { font-size: 0.75rem; color: #a8a29e; }
+
+.csv-table-wrap { max-height: 22rem; overflow: auto; border: 1px solid #e7e1d8; border-radius: 0.6rem; }
+.csv-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.csv-table thead th {
+    position: sticky; top: 0; background: #f7f5f1; color: #78716c; text-align: left;
+    font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em;
+    padding: 0.5rem 0.6rem; border-bottom: 1px solid #e7e1d8; white-space: nowrap;
+}
+.csv-table tbody td { padding: 0.45rem 0.6rem; border-bottom: 1px solid #f0ece4; color: #44403c; vertical-align: top; }
+.csv-table tbody tr:last-child td { border-bottom: none; }
+.csv-row-bad td { background: #fef6f6; }
+.csv-line { color: #a8a29e; font-variant-numeric: tabular-nums; }
+.csv-tick--ok  { color: #16a34a; font-weight: 700; }
+.csv-tick--err { color: #dc2626; font-weight: 700; }
+.csv-msg { display: block; font-size: 0.72rem; line-height: 1.3; }
+.csv-msg--err  { color: #b91c1c; }
+.csv-msg--warn { color: #b45309; }
+.csv-msg--ok   { color: #a8a29e; }
+.csv-more { font-size: 0.72rem; color: #a8a29e; text-align: center; padding: 0.5rem; }
+
+[data-theme="dark"] .csv-intro-text { color: #9898a6; }
+[data-theme="dark"] .csv-drop { border-color: #3c3c44; color: #6b6b76; }
+[data-theme="dark"] .csv-drop:hover { background: #1a212b; }
+[data-theme="dark"] .csv-drop-name { color: #cfcfd6; }
+[data-theme="dark"] .csv-table-wrap { border-color: #3c3c44; }
+[data-theme="dark"] .csv-table thead th { background: #1f1f24; color: #8a8a93; border-color: #2c2c33; }
+[data-theme="dark"] .csv-table tbody td { color: #c7c7d1; border-color: #26262c; }
+[data-theme="dark"] .csv-row-bad td { background: #2a1a1a; }
+
+/* ================================================
+   ПРЕДМЕТИ — clearly-labelled cards & list (non-techy)
+   Appended last to override earlier compact styles.
+   ================================================ */
+
+/* ---- Grid card: every value gets a label ---- */
+.case-card { gap: 0.5rem; }
+.case-card-num { display: flex; flex-direction: column; gap: 0.15rem; }
+.case-card-num-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.case-num { font-size: 1.2rem; font-weight: 800; color: var(--accent); letter-spacing: 0.01em; }
+
+.case-fld { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.case-fld-l { font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: #a8a29e; }
+.case-fld-v { font-size: 0.9rem; font-weight: 600; color: #1c1917; line-height: 1.3; word-break: break-word; }
+.case-role-chip {
+    display: inline-block; font-size: 0.66rem; font-weight: 600; vertical-align: middle;
+    color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-border);
+    border-radius: 0.3rem; padding: 0.02rem 0.4rem; margin-left: 0.15rem;
+}
+.case-muted { color: #c4bdb2; font-weight: 500; font-style: italic; }
+.case-card-two { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+
+.case-card-footer {
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 0.75rem;
+    padding-top: 0.6rem; border-top: 1px solid #f0ece4;
+}
+.case-foot-block { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.case-foot-right { align-items: flex-end; text-align: right; }
+.case-creator {
+    font-size: 0.8rem; font-weight: 600; color: #57534e; max-width: 9rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---- List view: labelled column header + aligned rows ---- */
+.case-list {
+    display: flex; flex-direction: column; padding: 0.25rem 0 0.5rem;
+    --case-cols: 9rem minmax(11rem, 1.8fr) minmax(9rem, 1.6fr) 7.5rem 7rem 5.5rem 4.5rem;
+}
+.case-list-head {
+    display: grid; grid-template-columns: var(--case-cols); gap: 1rem;
+    padding: 0.55rem 0.6rem; border-bottom: 2px solid #ece6dd;
+    font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #a8a29e;
+}
+.case-row {
+    display: grid; grid-template-columns: var(--case-cols); gap: 1rem; align-items: center;
+    padding: 0.75rem 0.6rem; border-bottom: 1px solid #f0ece4; cursor: pointer; transition: background-color 0.12s;
+}
+.case-row:hover { background: #faf7f3; }
+.case-cell { min-width: 0; font-size: 0.82rem; color: #44403c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.case-cell-num { display: flex; align-items: center; gap: 0.4rem; }
+.case-num-sm { font-weight: 800; color: var(--accent); font-size: 0.92rem; }
+.case-cell-parties strong { font-weight: 600; color: #1c1917; }
+.case-row-vs { color: #c4bdb2; font-style: italic; margin: 0 0.35rem; }
+.case-cell-value { font-weight: 600; }
+.case-cell-assignees { display: flex; white-space: normal; overflow: visible; }
+.case-cell-actions { display: flex; justify-content: flex-end; overflow: visible; }
+.case-row-actions-inner { display: flex; gap: 0.25rem; opacity: 0; transition: opacity 0.15s; }
+.case-row:hover .case-row-actions-inner { opacity: 1; }
+
+@media (max-width: 980px) {
+    .case-list { --case-cols: 8rem minmax(9rem, 1.6fr) minmax(8rem, 1.4fr) 5.5rem 4.5rem; }
+    .case-cell-value, .case-cell-admin { display: none; }
+}
+@media (max-width: 680px) {
+    .case-list { --case-cols: 6.5rem 1fr 4rem; }
+    .case-cell-basis, .case-cell-assignees { display: none; }
+}
+
+/* ---- Dark mode ---- */
+[data-theme="dark"] .case-fld-v,
+[data-theme="dark"] .case-cell-parties strong { color: #ededf0; }
+[data-theme="dark"] .case-fld-l,
+[data-theme="dark"] .case-list-head { color: #8a8a93; }
+[data-theme="dark"] .case-creator { color: #cfcfd6; }
+[data-theme="dark"] .case-card-footer { border-top-color: #2b2b31; }
+[data-theme="dark"] .case-muted { color: #6b6b76; }
+[data-theme="dark"] .case-list-head { border-bottom-color: #2c2c33; }
+[data-theme="dark"] .case-row { border-bottom-color: #2b2b31; }
+[data-theme="dark"] .case-row:hover { background: #2b2b31; }
+[data-theme="dark"] .case-cell { color: #c7c7d1; }
+
+/* ================================================
+   Case create/edit — 3-step wizard
+   ================================================ */
+.case-steps { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.35rem; }
+.case-step-pip { display: flex; align-items: center; gap: 0.5rem; background: none; border: none; cursor: pointer; padding: 0; }
+.case-step-no {
+    width: 1.75rem; height: 1.75rem; border-radius: 9999px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 0.82rem; font-weight: 700; background: #f0efed; color: #a8a29e;
+    border: 1.5px solid transparent; transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.case-step-lbl { font-size: 0.82rem; font-weight: 600; color: #a8a29e; white-space: nowrap; }
+.case-step-pip.is-active .case-step-no { background: var(--accent); color: #fff; }
+.case-step-pip.is-active .case-step-lbl { color: #1c1917; }
+.case-step-pip.is-done .case-step-no { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-border); }
+.case-step-pip.is-done .case-step-lbl { color: #57534e; }
+.case-step-line { flex: 1; height: 2px; background: #ece6dd; border-radius: 2px; min-width: 0.75rem; }
+@media (max-width: 520px) { .case-step-lbl { display: none; } }
+
+.case-step { display: none; }
+.case-step.is-active { display: block; animation: caseStepIn 0.2s ease; }
+@keyframes caseStepIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Step 1 hero field — the one thing to focus on first */
+.case-hero-field { margin-bottom: 1.1rem; }
+.case-hero-label { display: block; font-size: 0.98rem; font-weight: 700; color: #1c1917; margin-bottom: 0.5rem; }
+.field--hero { font-size: 1.05rem; padding: 0.85rem 1rem; }
+.case-opt { font-size: 0.72rem; font-weight: 500; color: #c4bdb2; }
+.case-form-grid--2 { grid-template-columns: 1fr 1fr; }
+@media (max-width: 560px) { .case-form-grid--2 { grid-template-columns: 1fr; } }
+
+/* Step 3 review summary */
+.case-review {
+    margin-top: 1.1rem; background: #faf7f3; border: 1px solid #f0ece4;
+    border-radius: 0.75rem; padding: 0.9rem 1.1rem;
+}
+.case-review-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #a8a29e; margin-bottom: 0.55rem; }
+.case-review-row { display: flex; gap: 0.75rem; font-size: 0.85rem; padding: 0.2rem 0; }
+.case-review-l { color: #a8a29e; flex: 0 0 9rem; }
+.case-review-v { color: #1c1917; font-weight: 600; min-width: 0; }
+
+/* Wizard footer */
+.case-wizard-actions { display: flex; align-items: center; gap: 0.5rem; }
+.case-wizard-spacer { flex: 1; }
+#caseBackBtn, #caseNextBtn { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+/* Dark mode */
+[data-theme="dark"] .case-step-no { background: #2b2b31; color: #8a8a93; }
+[data-theme="dark"] .case-step-pip.is-active .case-step-lbl { color: #ededf0; }
+[data-theme="dark"] .case-step-line { background: #3c3c44; }
+[data-theme="dark"] .case-hero-label { color: #ededf0; }
+[data-theme="dark"] .case-review { background: #1a1a1e; border-color: #2b2b31; }
+[data-theme="dark"] .case-review-v { color: #ededf0; }
+
+/* ================================================
+   Case create/edit — single form, numbered section cards
+   (replaces the wizard; bigger titles, smaller hints)
+   ================================================ */
+.case-block {
+    background: #faf8f5; border: 1px solid #efe9df; border-radius: 0.9rem;
+    padding: 1.1rem 1.2rem; margin-bottom: 0.9rem;
+}
+.case-block:last-of-type { margin-bottom: 0; }
+.case-block-head { display: flex; align-items: center; gap: 0.65rem; margin-bottom: 1rem; }
+.case-block-num {
+    width: 1.7rem; height: 1.7rem; border-radius: 9999px; flex-shrink: 0;
+    background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; font-weight: 700;
+}
+.case-block-title { font-size: 1.1rem; font-weight: 700; color: #1c1917; line-height: 1.15; }   /* BIG */
+.case-block-sub { font-size: 0.76rem; color: #a8a29e; margin-top: 0.1rem; }                       /* small */
+
+/* Sub-groups inside the Странки block */
+.case-subgroup { padding: 0.65rem 0; }
+.case-subgroup:first-child { padding-top: 0; }
+.case-subgroup:last-child { padding-bottom: 0; }
+.case-subgroup + .case-subgroup { border-top: 1px solid #efe9df; margin-top: 0.25rem; }
+.case-subhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.6rem; }
+.case-subhead-title { font-size: 0.86rem; font-weight: 700; color: #44403c; }                     /* medium */
+.case-subhead-desc { display: block; font-size: 0.72rem; color: #a8a29e; font-weight: 400; margin-top: 0.1rem; }  /* small */
+
+/* Inputs sit on the tinted card → keep them crisp white */
+.case-block .field { background: #ffffff; }
+
+/* Dark mode */
+[data-theme="dark"] .case-block { background: #26262c; border-color: #34343c; }
+[data-theme="dark"] .case-block-title { color: #ededf0; }
+[data-theme="dark"] .case-subgroup + .case-subgroup { border-top-color: #34343c; }
+[data-theme="dark"] .case-subhead-title { color: #cfcfd6; }
+[data-theme="dark"] .case-block .field { background: #1c1c20; }
