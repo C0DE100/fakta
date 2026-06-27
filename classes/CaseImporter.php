@@ -32,7 +32,7 @@ class CaseImporter
         'opponent_type'   => ['тип на спротивна', 'тип спротивна', 'тип', 'tip'],
         'opponent_role'   => ['својство на спротивна', 'улога на спротивна', 'svojstvo na sprotivna'],
         'opponent_lawyer' => ['адвокат', 'адвокат на спротивна', 'полномошник', 'advokat'],
-        'assignees'       => ['зададено на', 'задолжени', 'вработени', 'zadadeno na'],
+        'assignees'       => ['доделено на', 'зададено на', 'задолжени', 'вработени', 'zadadeno na'],
     ];
 
     public function __construct(Database $db, CaseFile $cases)

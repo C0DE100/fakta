@@ -1,13 +1,5 @@
 $(document).ready(function () {
 
-    // ---- Frosted nav on scroll ----
-    const $nav = $('.site-nav');
-    const mainContent = document.querySelector('.main-content');
-    (mainContent || window).addEventListener('scroll', function () {
-        const scrollTop = mainContent ? mainContent.scrollTop : window.scrollY;
-        $nav.toggleClass('nav-scrolled', scrollTop > 48);
-    }, { passive: true });
-
     // ---- Dark mode ----
     function updateDarkModeLabel() {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';

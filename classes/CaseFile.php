@@ -19,6 +19,18 @@ class CaseFile
     private Database $db;
     private const PER_PAGE = 12;
 
+    /** Allowed to-do workflow statuses. */
+    public const TODO_STATUSES = ['open', 'in_progress', 'waiting', 'done', 'declined'];
+
+    /** Allowed note types. */
+    public const NOTE_TYPES = ['general', 'call', 'meeting', 'important'];
+
+    /** Allowed case lifecycle phases (separate from archived). */
+    public const CASE_STATUSES = ['in_progress', 'on_hold', 'appeal', 'won', 'lost', 'closed'];
+
+    /** Calendar event kinds: рочиште / судење / состанок. */
+    public const HEARING_KINDS = ['hearing', 'trial', 'meeting'];
+
     public function __construct(Database $db)
     {
         $this->db = $db;
@@ -121,8 +133,8 @@ class CaseFile
         $seq  = $this->nextCaseSeq($companyId, $year);
 
         $stmt = $pdo->prepare(
-            "INSERT INTO cases (company_id, case_seq, case_year, basis, value_amount, value_currency, created_by, created_at)
-             VALUES (:cid, :seq, :year, :basis, :amount, :currency, :by, NOW())"
+            "INSERT INTO cases (company_id, case_seq, case_year, basis, value_amount, value_currency, status, created_by, created_at)
+             VALUES (:cid, :seq, :year, :basis, :amount, :currency, :status, :by, NOW())"
         );
         $stmt->execute([
             ':cid'      => $companyId,
@@ -131,6 +143,7 @@ class CaseFile
             ':basis'    => $this->nz($data['basis'] ?? null),
             ':amount'   => $this->money($data['value_amount'] ?? null),
             ':currency' => ($data['value_currency'] ?? 'ден') === 'евра' ? 'евра' : 'ден',
+            ':status'   => in_array($data['status'] ?? '', self::CASE_STATUSES, true) ? $data['status'] : 'in_progress',
             ':by'       => $createdBy,
         ]);
         $caseId = (int) $pdo->lastInsertId();
@@ -163,13 +176,14 @@ class CaseFile
         try {
             $stmt = $pdo->prepare(
                 "UPDATE cases
-                    SET basis = :basis, value_amount = :amount, value_currency = :currency
+                    SET basis = :basis, value_amount = :amount, value_currency = :currency, status = :status
                   WHERE id = :id AND company_id = :cid AND deleted_at IS NULL"
             );
             $stmt->execute([
                 ':basis'    => $this->nz($data['basis'] ?? null),
                 ':amount'   => $this->money($data['value_amount'] ?? null),
                 ':currency' => ($data['value_currency'] ?? 'ден') === 'евра' ? 'евра' : 'ден',
+                ':status'   => in_array($data['status'] ?? '', self::CASE_STATUSES, true) ? $data['status'] : 'in_progress',
                 ':id'       => $caseId,
                 ':cid'      => $companyId,
             ]);
@@ -223,6 +237,11 @@ class CaseFile
             $params[':aid']        = (int) $filters['assignee_id'];
         }
 
+        if (!empty($filters['phase']) && in_array($filters['phase'], self::CASE_STATUSES, true)) {
+            $conds[]          = 'c.status = :phase';
+            $params[':phase'] = $filters['phase'];
+        }
+
         $where = implode(' AND ', $conds);
 
         $order = ($filters['sort'] ?? '') === 'oldest'
@@ -239,7 +258,7 @@ class CaseFile
 
         $sql = "SELECT
                     c.id, c.case_seq, c.case_year, c.archive_seq, c.basis,
-                    c.value_amount, c.value_currency, c.archived_at, c.created_at,
+                    c.value_amount, c.value_currency, c.status, c.archived_at, c.created_at,
                     " . self::CASE_NUMBER_SQL . " AS case_number,
                     pc.role AS client_role,
                     COALESCE(NULLIF(pc.name, ''),
@@ -249,6 +268,9 @@ class CaseFile
                     po.role AS opponent_role,
                     po.name AS opponent_name,
                     an.admin_number AS admin_number,
+                    (SELECT MIN(h.hearing_at) FROM case_hearings h
+                       WHERE h.case_id = c.id AND h.hearing_at >= NOW()) AS next_hearing,
+                    (SELECT COUNT(*) FROM case_files cf WHERE cf.case_id = c.id) AS doc_count,
                     u.name AS created_by_name
                 FROM cases c
                 LEFT JOIN case_parties pc ON pc.case_id = c.id AND pc.side = 'client'   AND pc.is_primary = 1
@@ -271,6 +293,7 @@ class CaseFile
         $rows = $stmt->fetchAll();
         // Attach assignee avatars per case in one extra query (avoids N+1).
         $this->attachAssignees($companyId, $rows);
+        $this->attachParties($companyId, $rows);
 
         return ['data' => $rows, 'total' => $total, 'pages' => $pages, 'page' => $page];
     }
@@ -334,6 +357,20 @@ class CaseFile
     /* =====================================================================
      | Archive / unarchive
      * =================================================================== */
+
+    /** Quick-set a case's lifecycle phase. */
+    public function setStatus(int $companyId, int $caseId, string $status): bool
+    {
+        if (!in_array($status, self::CASE_STATUSES, true)) {
+            return false;
+        }
+        $stmt = $this->db->prepare(
+            "UPDATE cases SET status = :st WHERE id = :id AND company_id = :cid AND deleted_at IS NULL"
+        );
+        $stmt->execute([':st' => $status, ':id' => $caseId, ':cid' => $companyId]);
+        return $stmt->rowCount() > 0
+            || (bool) ($this->getById($companyId, $caseId)); // no-op (same value) still ok
+    }
 
     /** Archive a case: stamp archived_at and assign the next per-company /N suffix. */
     public function archive(int $companyId, int $caseId): bool
@@ -595,6 +632,446 @@ class CaseFile
     }
 
     /* =====================================================================
+     | Белешки (notes)
+     * =================================================================== */
+
+    /** Add a note to a case. Returns the new note id, or null if invalid. */
+    public function addNote(int $companyId, int $caseId, ?int $userId, string $body, string $type = 'general'): ?int
+    {
+        $body = trim($body);
+        if ($body === '') {
+            return null;
+        }
+        $chk = $this->db->prepare("SELECT 1 FROM cases WHERE id = :id AND company_id = :cid AND deleted_at IS NULL");
+        $chk->execute([':id' => $caseId, ':cid' => $companyId]);
+        if (!$chk->fetchColumn()) {
+            return null;
+        }
+        $stmt = $this->db->prepare(
+            "INSERT INTO case_notes (company_id, case_id, user_id, body, note_type, created_at)
+             VALUES (:cid, :case, :uid, :body, :type, NOW())"
+        );
+        $stmt->execute([
+            ':cid'  => $companyId,
+            ':case' => $caseId,
+            ':uid'  => $userId,
+            ':body' => $body,
+            ':type' => in_array($type, self::NOTE_TYPES, true) ? $type : 'general',
+        ]);
+        return (int) $this->db->lastInsertId();
+    }
+
+    /** All notes on a case: pinned first, then newest, with the author's live name. */
+    public function getNotes(int $companyId, int $caseId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT n.id, n.body, n.note_type, n.is_pinned, n.user_id, n.created_at, n.updated_at, u.name AS author_name
+             FROM case_notes n
+             LEFT JOIN users u ON u.id = n.user_id
+             WHERE n.case_id = :id AND n.company_id = :cid
+             ORDER BY n.is_pinned DESC, n.created_at DESC, n.id DESC"
+        );
+        $stmt->execute([':id' => $caseId, ':cid' => $companyId]);
+        return $stmt->fetchAll();
+    }
+
+    /** Edit a note (body + type) — only the author may. Returns false otherwise. */
+    public function updateNote(int $companyId, int $noteId, int $userId, string $body, string $type = 'general'): bool
+    {
+        $body = trim($body);
+        if ($body === '') {
+            return false;
+        }
+        $chk = $this->db->prepare(
+            "SELECT 1 FROM case_notes WHERE id = :nid AND company_id = :cid AND user_id = :uid"
+        );
+        $chk->execute([':nid' => $noteId, ':cid' => $companyId, ':uid' => $userId]);
+        if (!$chk->fetchColumn()) {
+            return false;
+        }
+        $this->db->prepare("UPDATE case_notes SET body = :body, note_type = :type WHERE id = :nid AND company_id = :cid")
+            ->execute([
+                ':body' => $body,
+                ':type' => in_array($type, self::NOTE_TYPES, true) ? $type : 'general',
+                ':nid'  => $noteId,
+                ':cid'  => $companyId,
+            ]);
+        return true;
+    }
+
+    /** Pin/unpin a note — anyone with case access (shared highlight). */
+    public function pinNote(int $companyId, int $noteId, bool $pinned): bool
+    {
+        $stmt = $this->db->prepare("UPDATE case_notes SET is_pinned = :p WHERE id = :nid AND company_id = :cid");
+        $stmt->execute([':p' => $pinned ? 1 : 0, ':nid' => $noteId, ':cid' => $companyId]);
+        return $stmt->rowCount() > 0
+            || (bool) $this->existsNote($companyId, $noteId); // treat no-op (same value) as success
+    }
+
+    private function existsNote(int $companyId, int $noteId): bool
+    {
+        $stmt = $this->db->prepare("SELECT 1 FROM case_notes WHERE id = :nid AND company_id = :cid");
+        $stmt->execute([':nid' => $noteId, ':cid' => $companyId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /** Delete a note — the author or an admin may. */
+    public function deleteNote(int $companyId, int $noteId, int $userId, bool $isAdmin): bool
+    {
+        if ($isAdmin) {
+            $stmt = $this->db->prepare("DELETE FROM case_notes WHERE id = :nid AND company_id = :cid");
+            $stmt->execute([':nid' => $noteId, ':cid' => $companyId]);
+        } else {
+            $stmt = $this->db->prepare("DELETE FROM case_notes WHERE id = :nid AND company_id = :cid AND user_id = :uid");
+            $stmt->execute([':nid' => $noteId, ':cid' => $companyId, ':uid' => $userId]);
+        }
+        return $stmt->rowCount() > 0;
+    }
+
+    /* =====================================================================
+     | Рочишта / настани (hearings)
+     * =================================================================== */
+
+    /** Normalize an event kind to one of HEARING_KINDS (defaults to 'hearing'). */
+    private function normKind(?string $kind): string
+    {
+        $kind = trim((string) $kind);
+        return in_array($kind, self::HEARING_KINDS, true) ? $kind : 'hearing';
+    }
+
+    /** Add a hearing/event. $hearingAt is 'YYYY-MM-DD HH:MM(:SS)'. Returns id or null. */
+    public function addHearing(int $companyId, int $caseId, ?int $createdBy, string $title, string $hearingAt, ?string $location, ?string $note, string $kind = 'hearing'): ?int
+    {
+        $title = trim($title);
+        $at = $this->normDateTime($hearingAt);
+        if ($title === '' || $at === null) {
+            return null;
+        }
+        $chk = $this->db->prepare("SELECT 1 FROM cases WHERE id = :id AND company_id = :cid AND deleted_at IS NULL");
+        $chk->execute([':id' => $caseId, ':cid' => $companyId]);
+        if (!$chk->fetchColumn()) {
+            return null;
+        }
+        $stmt = $this->db->prepare(
+            "INSERT INTO case_hearings (company_id, case_id, kind, title, hearing_at, location, note, created_by, created_at)
+             VALUES (:cid, :case, :kind, :title, :at, :loc, :note, :by, NOW())"
+        );
+        $stmt->execute([
+            ':cid'   => $companyId,
+            ':case'  => $caseId,
+            ':kind'  => $this->normKind($kind),
+            ':title' => mb_substr($title, 0, 255),
+            ':at'    => $at,
+            ':loc'   => $this->nz($location),
+            ':note'  => $this->nz($note),
+            ':by'    => $createdBy,
+        ]);
+        return (int) $this->db->lastInsertId();
+    }
+
+    /** Hearings on a case, chronological (earliest first), with creator name. */
+    public function getHearings(int $companyId, int $caseId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT h.id, h.kind, h.title, h.hearing_at, h.location, h.note, h.created_by, cu.name AS creator_name
+             FROM case_hearings h
+             LEFT JOIN users cu ON cu.id = h.created_by
+             WHERE h.case_id = :id AND h.company_id = :cid
+             ORDER BY h.hearing_at ASC"
+        );
+        $stmt->execute([':id' => $caseId, ':cid' => $companyId]);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * All calendar events for a company within [from, to] (inclusive dates),
+     * across every non-deleted case, with the case number + primary client name
+     * for labelling. Used by the calendar page.
+     */
+    public function getCalendarEvents(int $companyId, string $from, string $to, int $assigneeId = 0): array
+    {
+        $from = $this->nzDate($from);
+        $to   = $this->nzDate($to);
+        if ($from === null || $to === null) {
+            return [];
+        }
+
+        $params = [':cid' => $companyId, ':from' => $from, ':to' => $to];
+        $assigneeFilter = '';
+        if ($assigneeId > 0) {
+            $assigneeFilter = 'AND EXISTS (SELECT 1 FROM case_assignees caf
+                                          WHERE caf.case_id = c.id AND caf.user_id = :aid)';
+            $params[':aid'] = $assigneeId;
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT h.id, h.case_id, h.kind, h.title, h.hearing_at, h.location, h.note,
+                    h.created_by, cu.name AS creator_name,
+                    " . self::CASE_NUMBER_SQL . " AS case_number,
+                    c.basis AS case_basis,
+                    COALESCE(NULLIF(pc.name, ''),
+                             CASE WHEN cl.type = 'company' THEN cl.company_name ELSE cl.full_name END
+                    ) AS client_name,
+                    (SELECT GROUP_CONCAT(u2.name ORDER BY u2.name SEPARATOR ', ')
+                       FROM case_assignees ca2 JOIN users u2 ON u2.id = ca2.user_id
+                      WHERE ca2.case_id = c.id) AS assignees
+             FROM case_hearings h
+             JOIN cases c ON c.id = h.case_id AND c.deleted_at IS NULL
+             LEFT JOIN case_parties pc ON pc.case_id = c.id AND pc.side = 'client' AND pc.is_primary = 1
+             LEFT JOIN clients cl ON cl.id = pc.client_id
+             LEFT JOIN users cu ON cu.id = h.created_by
+             WHERE h.company_id = :cid
+               AND h.hearing_at >= :from AND h.hearing_at < (:to + INTERVAL 1 DAY)
+               {$assigneeFilter}
+             ORDER BY h.hearing_at ASC"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    public function updateHearing(int $companyId, int $hearingId, int $userId, bool $isAdmin, string $title, string $hearingAt, ?string $location, ?string $note, string $kind = 'hearing'): bool
+    {
+        $title = trim($title);
+        $at = $this->normDateTime($hearingAt);
+        if ($title === '' || $at === null || !$this->hearingEditable($companyId, $hearingId, $userId, $isAdmin)) {
+            return false;
+        }
+        $this->db->prepare(
+            "UPDATE case_hearings SET kind = :kind, title = :title, hearing_at = :at, location = :loc, note = :note
+             WHERE id = :id AND company_id = :cid"
+        )->execute([
+            ':kind'  => $this->normKind($kind),
+            ':title' => mb_substr($title, 0, 255),
+            ':at'    => $at,
+            ':loc'   => $this->nz($location),
+            ':note'  => $this->nz($note),
+            ':id'    => $hearingId,
+            ':cid'   => $companyId,
+        ]);
+        return true;
+    }
+
+    public function deleteHearing(int $companyId, int $hearingId, int $userId, bool $isAdmin): bool
+    {
+        if (!$this->hearingEditable($companyId, $hearingId, $userId, $isAdmin)) {
+            return false;
+        }
+        $stmt = $this->db->prepare("DELETE FROM case_hearings WHERE id = :id AND company_id = :cid");
+        $stmt->execute([':id' => $hearingId, ':cid' => $companyId]);
+        return $stmt->rowCount() > 0;
+    }
+
+    private function hearingEditable(int $companyId, int $hearingId, int $userId, bool $isAdmin): bool
+    {
+        $sql = $isAdmin
+            ? "SELECT 1 FROM case_hearings WHERE id = :id AND company_id = :cid"
+            : "SELECT 1 FROM case_hearings WHERE id = :id AND company_id = :cid AND created_by = :uid";
+        $stmt = $this->db->prepare($sql);
+        $params = [':id' => $hearingId, ':cid' => $companyId];
+        if (!$isAdmin) {
+            $params[':uid'] = $userId;
+        }
+        $stmt->execute($params);
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /** Normalize a datetime-local value to 'Y-m-d H:i:s' or null. */
+    private function normDateTime(string $s): ?string
+    {
+        $s = trim($s);
+        $s = str_replace('T', ' ', $s);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $s)) {
+            return null;
+        }
+        return strlen($s) === 16 ? $s . ':00' : $s;
+    }
+
+    /* =====================================================================
+     | Задачи (to-do)
+     * =================================================================== */
+
+    /** Add a to-do to a case. $dueDate is 'YYYY-MM-DD' or null. Returns id or null. */
+    public function addTodo(int $companyId, int $caseId, ?int $createdBy, string $title, ?string $dueDate, ?int $assignedTo): ?int
+    {
+        $title = trim($title);
+        if ($title === '') {
+            return null;
+        }
+        $chk = $this->db->prepare("SELECT 1 FROM cases WHERE id = :id AND company_id = :cid AND deleted_at IS NULL");
+        $chk->execute([':id' => $caseId, ':cid' => $companyId]);
+        if (!$chk->fetchColumn()) {
+            return null;
+        }
+        $stmt = $this->db->prepare(
+            "INSERT INTO case_todos (company_id, case_id, title, due_date, assigned_to, created_by, created_at)
+             VALUES (:cid, :case, :title, :due, :assignee, :by, NOW())"
+        );
+        $stmt->execute([
+            ':cid'      => $companyId,
+            ':case'     => $caseId,
+            ':title'    => mb_substr($title, 0, 500),
+            ':due'      => $this->nzDate($dueDate),
+            ':assignee' => $assignedTo ?: null,
+            ':by'       => $createdBy,
+        ]);
+        return (int) $this->db->lastInsertId();
+    }
+
+    /** To-dos on a case: active statuses first, then by due date, with names. */
+    public function getTodos(int $companyId, int $caseId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT t.id, t.title, t.status, t.is_done, t.due_date, t.assigned_to, t.created_by,
+                    t.created_at, t.completed_at, a.name AS assignee_name, cu.name AS creator_name
+             FROM case_todos t
+             LEFT JOIN users a  ON a.id = t.assigned_to
+             LEFT JOIN users cu ON cu.id = t.created_by
+             WHERE t.case_id = :id AND t.company_id = :cid
+             ORDER BY FIELD(t.status, 'in_progress', 'open', 'waiting', 'done', 'declined'),
+                      (t.due_date IS NULL) ASC, t.due_date ASC, t.created_at ASC"
+        );
+        $stmt->execute([':id' => $caseId, ':cid' => $companyId]);
+        return $stmt->fetchAll();
+    }
+
+    /** Set a to-do's workflow status — anyone with case access (shared checklist). */
+    public function setTodoStatus(int $companyId, int $todoId, string $status): bool
+    {
+        if (!in_array($status, self::TODO_STATUSES, true)) {
+            return false;
+        }
+        $chk = $this->db->prepare("SELECT 1 FROM case_todos WHERE id = :id AND company_id = :cid");
+        $chk->execute([':id' => $todoId, ':cid' => $companyId]);
+        if (!$chk->fetchColumn()) {
+            return false;
+        }
+        $this->db->prepare(
+            "UPDATE case_todos
+                SET status = :st, is_done = :d,
+                    completed_at = CASE WHEN :st2 = 'done' THEN NOW() ELSE NULL END
+              WHERE id = :id AND company_id = :cid"
+        )->execute([
+            ':st'  => $status,
+            ':d'   => $status === 'done' ? 1 : 0,
+            ':st2' => $status,
+            ':id'  => $todoId,
+            ':cid' => $companyId,
+        ]);
+        return true;
+    }
+
+    /** Edit a to-do (title/due/assignee) — creator or admin only. */
+    public function updateTodo(int $companyId, int $todoId, int $userId, bool $isAdmin, string $title, ?string $dueDate, ?int $assignedTo): bool
+    {
+        $title = trim($title);
+        if ($title === '') {
+            return false;
+        }
+        if (!$this->todoEditable($companyId, $todoId, $userId, $isAdmin)) {
+            return false;
+        }
+        $this->db->prepare(
+            "UPDATE case_todos SET title = :title, due_date = :due, assigned_to = :assignee
+             WHERE id = :id AND company_id = :cid"
+        )->execute([
+            ':title'    => mb_substr($title, 0, 500),
+            ':due'      => $this->nzDate($dueDate),
+            ':assignee' => $assignedTo ?: null,
+            ':id'       => $todoId,
+            ':cid'      => $companyId,
+        ]);
+        return true;
+    }
+
+    /** Delete a to-do — creator or admin only. */
+    public function deleteTodo(int $companyId, int $todoId, int $userId, bool $isAdmin): bool
+    {
+        if (!$this->todoEditable($companyId, $todoId, $userId, $isAdmin)) {
+            return false;
+        }
+        $stmt = $this->db->prepare("DELETE FROM case_todos WHERE id = :id AND company_id = :cid");
+        $stmt->execute([':id' => $todoId, ':cid' => $companyId]);
+        return $stmt->rowCount() > 0;
+    }
+
+    private function todoEditable(int $companyId, int $todoId, int $userId, bool $isAdmin): bool
+    {
+        if ($isAdmin) {
+            $stmt = $this->db->prepare("SELECT 1 FROM case_todos WHERE id = :id AND company_id = :cid");
+            $stmt->execute([':id' => $todoId, ':cid' => $companyId]);
+        } else {
+            $stmt = $this->db->prepare("SELECT 1 FROM case_todos WHERE id = :id AND company_id = :cid AND created_by = :uid");
+            $stmt->execute([':id' => $todoId, ':cid' => $companyId, ':uid' => $userId]);
+        }
+        return (bool) $stmt->fetchColumn();
+    }
+
+    private function nzDate(?string $d): ?string
+    {
+        $d = trim((string) $d);
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) ? $d : null;
+    }
+
+    /* =====================================================================
+     | Документи (files uploaded from the computer)
+     * =================================================================== */
+
+    /** Files attached to a case, newest first, with uploader name. */
+    public function getFiles(int $companyId, int $caseId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT f.id, f.orig_name, f.ext, f.size_bytes, f.created_at, u.name AS uploaded_by_name
+             FROM case_files f
+             LEFT JOIN users u ON u.id = f.uploaded_by
+             WHERE f.case_id = :case AND f.company_id = :cid
+             ORDER BY f.id DESC"
+        );
+        $stmt->execute([':case' => $caseId, ':cid' => $companyId]);
+        return $stmt->fetchAll();
+    }
+
+    /** Record an uploaded file against a case. Returns the new file id, or null if the case is invalid. */
+    public function addFile(int $companyId, int $caseId, ?int $uploadedBy, string $origName, string $storedRel, ?string $ext, int $size): ?int
+    {
+        $chk = $this->db->prepare("SELECT 1 FROM cases WHERE id = :id AND company_id = :cid AND deleted_at IS NULL");
+        $chk->execute([':id' => $caseId, ':cid' => $companyId]);
+        if (!$chk->fetchColumn()) {
+            return null;
+        }
+        $stmt = $this->db->prepare(
+            "INSERT INTO case_files (company_id, case_id, orig_name, stored_rel, ext, size_bytes, uploaded_by, created_at)
+             VALUES (:cid, :case, :name, :rel, :ext, :size, :by, NOW())"
+        );
+        $stmt->execute([
+            ':cid'  => $companyId,
+            ':case' => $caseId,
+            ':name' => mb_substr($origName, 0, 255),
+            ':rel'  => $storedRel,
+            ':ext'  => $ext ? mb_substr($ext, 0, 12) : null,
+            ':size' => $size,
+            ':by'   => $uploadedBy,
+        ]);
+        return (int) $this->db->lastInsertId();
+    }
+
+    /** One file row (for streaming a download). Tenant-scoped. */
+    public function getFile(int $companyId, int $fileId): ?array
+    {
+        $stmt = $this->db->prepare("SELECT * FROM case_files WHERE id = :id AND company_id = :cid");
+        $stmt->execute([':id' => $fileId, ':cid' => $companyId]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    /** Delete a file row. The caller removes the physical file. */
+    public function deleteFile(int $companyId, int $fileId): bool
+    {
+        $stmt = $this->db->prepare("DELETE FROM case_files WHERE id = :id AND company_id = :cid");
+        $stmt->execute([':id' => $fileId, ':cid' => $companyId]);
+        return $stmt->rowCount() > 0;
+    }
+
+    /* =====================================================================
      | основ autocomplete
      * =================================================================== */
 
@@ -724,6 +1201,35 @@ class CaseFile
         }
         foreach ($rows as &$row) {
             $row['assignees'] = $byCase[$row['id']] ?? [];
+        }
+        unset($row);
+    }
+
+    /** Attach ALL parties (both sides, names resolved) to a page of cases. */
+    private function attachParties(int $companyId, array &$rows): void
+    {
+        if (!$rows) {
+            return;
+        }
+        $ids = array_column($rows, 'id');
+        $in  = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT p.case_id, p.side, p.role,
+                    COALESCE(NULLIF(p.name, ''),
+                             CASE WHEN cl.type = 'company' THEN cl.company_name ELSE cl.full_name END) AS name
+             FROM case_parties p
+             LEFT JOIN clients cl ON cl.id = p.client_id
+             WHERE p.company_id = ? AND p.case_id IN ({$in})
+             ORDER BY p.side, p.is_primary DESC, p.id"
+        );
+        $stmt->execute(array_merge([$companyId], $ids));
+        $byCase = [];
+        foreach ($stmt->fetchAll() as $r) {
+            $byCase[$r['case_id']][$r['side']][] = ['name' => $r['name'], 'role' => $r['role']];
+        }
+        foreach ($rows as &$row) {
+            $row['client_parties']   = $byCase[$row['id']]['client'] ?? [];
+            $row['opponent_parties'] = $byCase[$row['id']]['opponent'] ?? [];
         }
         unset($row);
     }

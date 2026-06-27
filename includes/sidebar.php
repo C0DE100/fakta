@@ -39,6 +39,13 @@ $canSeeInvoices = $sidebarRole === 'admin';
             <span class="sidebar-btn-label">Предмети</span>
         </a>
 
+        <a href="kalendar.php" class="sidebar-btn<?= $currentPage === 'kalendar' ? ' sidebar-btn--active' : '' ?>" title="Календар">
+            <svg xmlns="http://www.w3.org/2000/svg" class="sidebar-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/>
+            </svg>
+            <span class="sidebar-btn-label">Календар</span>
+        </a>
+
         <?php if ($canSeeInvoices): ?>
         <div class="sidebar-group">
             <button class="sidebar-btn sidebar-btn--parent<?= $invoicesOpen ? ' sidebar-btn--open sidebar-btn--active' : '' ?>" id="btnInvoicesToggle" title="Фактури">

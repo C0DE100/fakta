@@ -15,9 +15,19 @@ $(function () {
         view: localStorage.getItem('casesView') === 'list' ? 'list' : 'grid',
         search: '',
         assignee: '',
+        phase: '',
         sort: 'newest',
         page: 1
     };
+
+    var CASE_STATUS = {
+        in_progress: 'Во тек', on_hold: 'Мирување', appeal: 'Жалба',
+        won: 'Добиен', lost: 'Изгубен', closed: 'Затворен'
+    };
+    function phaseBadge(status) {
+        var st = status || 'in_progress';
+        return '<span class="case-badge cstat--' + st + '">' + (CASE_STATUS[st] || st) + '</span>';
+    }
 
     var clients = [];     // [{id, type, company_name, full_name}]
     var members = [];     // [{id, name, role}]
@@ -62,6 +72,19 @@ $(function () {
         if (isNaN(d.getTime())) return '';
         return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + d.getFullYear();
     }
+    // Friendly next-hearing label: "денес 09:30" / "утре 10:00" / "за 3 дена (12.07.2026)" / "12.07.2026 10:00".
+    function hearingLabel(s) {
+        if (!s) return '';
+        var time = String(s).slice(11, 16);
+        var dp = String(s).slice(0, 10).split('-');
+        var dl = dp[2] + '.' + dp[1] + '.' + dp[0];
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        var diff = Math.round((new Date(String(s).slice(0, 10) + 'T00:00:00') - today) / 86400000);
+        if (diff === 0) return 'денес ' + time;
+        if (diff === 1) return 'утре ' + time;
+        if (diff > 1 && diff <= 7) return 'за ' + diff + ' дена (' + dl + ')';
+        return dl + ' ' + time;
+    }
 
     function post(action, data) {
         data = data || {}; data.action = action;
@@ -77,7 +100,7 @@ $(function () {
             url: API, dataType: 'json',
             data: {
                 action: 'get_list', status: state.status, search: state.search,
-                assignee_id: state.assignee, sort: state.sort, page: state.page
+                assignee_id: state.assignee, phase: state.phase, sort: state.sort, page: state.page
             },
             success: function (res) {
                 if (!res.success) { $('#casesList').html('<p class="list-msg err" style="padding:1rem 0">' + esc(res.message) + '</p>'); return; }
@@ -115,10 +138,28 @@ $(function () {
         return role ? ' <span class="case-role-chip">' + esc(role) + '</span>' : '';
     }
     function muted(txt) { return '<span class="case-muted">' + esc(txt) + '</span>'; }
+
+    // All parties of one side, stacked (grid card). Falls back to the legacy single field.
+    function partyLines(arr, single, singleRole, emptyTxt) {
+        if (arr && arr.length) {
+            return arr.map(function (p) {
+                return '<span class="case-party-line">' + esc(p.name || '—') + roleChip(p.role) + '</span>';
+            }).join('');
+        }
+        if (single) return esc(single) + roleChip(singleRole);
+        return muted(emptyTxt);
+    }
+    // All parties of one side, comma-joined (list row).
+    function partyInline(arr, single, singleRole) {
+        if (arr && arr.length) {
+            return arr.map(function (p) { return '<strong>' + esc(p.name || '—') + '</strong>' + roleChip(p.role); }).join(', ');
+        }
+        return '<strong>' + esc(single || '—') + '</strong>' + roleChip(singleRole);
+    }
+
     function statusBadge(r) {
-        return r.archived_at
-            ? '<span class="case-badge case-badge--archived">Архивиран</span>'
-            : '<span class="case-badge case-badge--active">Активен</span>';
+        return phaseBadge(r.status)
+            + (r.archived_at ? '<span class="case-badge case-badge--archived">Архивиран</span>' : '');
     }
 
     function actionsHtml(r) {
@@ -150,15 +191,17 @@ $(function () {
             +   '<div class="case-card-num-row"><span class="case-num">' + esc(r.case_number) + '</span>' + statusBadge(r) + '</div>'
             + '</div>'
             + fld('Основ', r.basis ? esc(r.basis) : muted('Нема основ'))
-            + fld('Наш клиент', (r.client_name ? esc(r.client_name) : muted('—')) + roleChip(r.client_role))
-            + fld('Спротивна странка', r.opponent_name ? (esc(r.opponent_name) + roleChip(r.opponent_role)) : muted('Нема'))
+            + fld((r.client_parties && r.client_parties.length > 1) ? 'Наши странки' : 'Наш клиент', partyLines(r.client_parties, r.client_name, r.client_role, '—'))
+            + fld((r.opponent_parties && r.opponent_parties.length > 1) ? 'Спротивни странки' : 'Спротивна странка', partyLines(r.opponent_parties, r.opponent_name, r.opponent_role, 'Нема'))
             + '<div class="case-card-two">'
             +   fld('Вредност', value ? esc(value) : muted('—'))
             +   fld('Административен број', r.admin_number ? esc(r.admin_number) : muted('—'))
             + '</div>'
+            + (r.next_hearing ? '<div class="case-next-hearing"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>Следен настан: <strong>' + esc(hearingLabel(r.next_hearing)) + '</strong></div>' : '')
+            + (+r.doc_count > 0 ? '<div class="case-doc-count"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>' + r.doc_count + ' ' + (+r.doc_count === 1 ? 'документ' : 'документи') + '</div>' : '')
             + '<div class="case-card-footer">'
             +   '<div class="case-foot-block">'
-            +     '<span class="case-fld-l">Задолжени</span>'
+            +     '<span class="case-fld-l">Доделено на</span>'
             +     '<div class="case-assignees">' + (assigneeAvatars(r.assignees) || muted('Никој')) + '</div>'
             +   '</div>'
             +   (r.created_by_name
@@ -177,7 +220,7 @@ $(function () {
             + '<span class="case-cell-basis">Основ</span>'
             + '<span class="case-cell-value">Вредност</span>'
             + '<span class="case-cell-admin">Админ. број</span>'
-            + '<span class="case-cell-assignees">Задолжени</span>'
+            + '<span class="case-cell-assignees">Доделено на</span>'
             + '<span class="case-cell-actions"></span>'
             + '</div>';
     }
@@ -186,11 +229,12 @@ $(function () {
         var value = fmtMoney(r.value_amount, r.value_currency);
         return '<div class="case-row" data-id="' + r.id + '">'
             + '<div class="case-cell case-cell-num"><span class="case-num-sm">' + esc(r.case_number) + '</span>'
+            +   phaseBadge(r.status)
             +   (r.archived_at ? '<span class="case-badge case-badge--archived">арх.</span>' : '') + '</div>'
             + '<div class="case-cell case-cell-parties">'
-            +   '<strong>' + esc(r.client_name || '—') + '</strong>' + roleChip(r.client_role)
+            +   partyInline(r.client_parties, r.client_name, r.client_role)
             +   '<span class="case-row-vs">против</span>'
-            +   '<strong>' + esc(r.opponent_name || '—') + '</strong>' + roleChip(r.opponent_role)
+            +   partyInline(r.opponent_parties, r.opponent_name, r.opponent_role)
             + '</div>'
             + '<div class="case-cell case-cell-basis">' + (r.basis ? esc(r.basis) : muted('—')) + '</div>'
             + '<div class="case-cell case-cell-value">' + (value ? esc(value) : muted('—')) + '</div>'
@@ -208,6 +252,7 @@ $(function () {
         searchTimer = setTimeout(function () { state.page = 1; loadList(); }, 300);
     });
     $('#caseAssignee').on('change', function () { state.assignee = $(this).val(); state.page = 1; loadList(); });
+    $('#casePhase').on('change', function () { state.phase = $(this).val(); state.page = 1; loadList(); });
     $('#caseSort').on('change', function () { state.sort = $(this).val(); state.page = 1; loadList(); });
 
     $('#caseTabs').on('click', '.case-tab', function () {
@@ -336,7 +381,7 @@ $(function () {
                 + '<span class="assignee-tag-av" style="background:' + c.bg + ';color:' + c.fg + '">' + esc(initials(name)) + '</span>'
                 + esc(name)
                 + '<button type="button" class="assignee-tag-x" data-uid="' + id + '" aria-label="Отстрани">&times;</button></span>';
-        }).join('') : '<span class="assignee-empty">Сè уште никој не е зададен</span>');
+        }).join('') : '<span class="assignee-empty">Сè уште нема доделено на никого</span>');
     }
 
     // Filterable dropdown of employees not yet selected (scales to many).
@@ -394,6 +439,7 @@ $(function () {
         $('#caseId').val('');
         $('#caseForm')[0].reset();
         $('#caseCurrency').val('ден');
+        $('#caseStatus').val('in_progress');
         $('#caseAlert').hide();
         $('#adminNumberRow').show();
         selectedAssignees = {};
@@ -421,6 +467,7 @@ $(function () {
             $('#caseBasis').val(c.basis || '');
             $('#caseValue').val(c.value_amount != null ? String(c.value_amount).replace('.', ',') : '');
             $('#caseCurrency').val(c.value_currency || 'ден');
+            $('#caseStatus').val(c.status || 'in_progress');
             $('#adminNumberRow').hide(); // admin numbers managed on the detail page when editing
 
             var cParties = (c.parties || []).filter(function (p) { return p.side === 'client'; });
@@ -471,6 +518,7 @@ $(function () {
             basis: $('#caseBasis').val().trim(),
             value_amount: $('#caseValue').val().trim(),
             value_currency: $('#caseCurrency').val(),
+            status: $('#caseStatus').val(),
             parties: JSON.stringify(parties),
             assignees: JSON.stringify(Object.keys(selectedAssignees))
         };
@@ -590,7 +638,7 @@ $(function () {
     // Downloadable template (UTF-8 BOM so Excel shows Cyrillic correctly).
     $('#csvTemplateBtn').on('click', function () {
         var header = ['Основ', 'Вредност', 'Валута', 'Административен број', 'Клиент', 'Својство на клиент',
-            'Спротивна странка', 'Тип на спротивна', 'Својство на спротивна', 'Адвокат на спротивна', 'Зададено на'];
+            'Спротивна странка', 'Тип на спротивна', 'Својство на спротивна', 'Адвокат на спротивна', 'Доделено на'];
         var example = ['Оштета на возило', '15000.50', 'евра', 'П1-123/24', 'Име на постоечки клиент', 'Тужител',
             'Фирма А', 'правно', 'Тужен', 'адв. Славе', ''];
         var csv = '﻿' + header.join(',') + '\n' + example.join(',') + '\n';

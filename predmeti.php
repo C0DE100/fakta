@@ -49,6 +49,16 @@ $canManage = current_role() !== 'praktikant';
                     <option value="">Сите вработени</option>
                 </select>
 
+                <select id="casePhase" class="field" style="max-width:11rem">
+                    <option value="">Сите фази</option>
+                    <option value="in_progress">Во тек</option>
+                    <option value="on_hold">Мирување</option>
+                    <option value="appeal">Жалба</option>
+                    <option value="won">Добиен</option>
+                    <option value="lost">Изгубен</option>
+                    <option value="closed">Затворен</option>
+                </select>
+
                 <select id="caseSort" class="field" style="max-width:11rem">
                     <option value="newest">Најнови прво</option>
                     <option value="oldest">Најстари прво</option>
@@ -130,6 +140,17 @@ $canManage = current_role() !== 'praktikant';
 
                     <div class="case-form-grid case-form-grid--2">
                         <div class="case-field">
+                            <label for="caseStatus" class="case-label">Статус / фаза</label>
+                            <select id="caseStatus" class="field">
+                                <option value="in_progress">Во тек</option>
+                                <option value="on_hold">Мирување</option>
+                                <option value="appeal">Жалба</option>
+                                <option value="won">Добиен</option>
+                                <option value="lost">Изгубен</option>
+                                <option value="closed">Затворен</option>
+                            </select>
+                        </div>
+                        <div class="case-field">
                             <label for="caseValue" class="case-label">Вредност на спорот <span class="case-opt">(опционално)</span></label>
                             <div style="display:flex; gap:0.5rem">
                                 <input type="text" inputmode="decimal" class="field" id="caseValue" placeholder="0,00" style="flex:1">
@@ -190,7 +211,7 @@ $canManage = current_role() !== 'praktikant';
                     <div class="case-block-head">
                         <span class="case-block-num">3</span>
                         <div>
-                            <h3 class="case-block-title">Задолжени</h3>
+                            <h3 class="case-block-title">Доделено на</h3>
                             <p class="case-block-sub">Кој ќе работи на предметот (опционално)</p>
                         </div>
                     </div>
@@ -281,7 +302,7 @@ $canManage = current_role() !== 'praktikant';
                 <p class="csv-intro-text">
                     Колони: <strong>Основ</strong> и <strong>Клиент</strong> се задолжителни. Клиентот мора да постои во системот
                     (се совпаѓа по име). Опционални: Вредност, Валута, Административен број, Својство на клиент,
-                    Спротивна странка, Тип на спротивна, Својство на спротивна, Адвокат на спротивна, Зададено на.
+                    Спротивна странка, Тип на спротивна, Својство на спротивна, Адвокат на спротивна, Доделено на.
                 </p>
                 <button type="button" id="csvTemplateBtn" class="btn-secondary">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
