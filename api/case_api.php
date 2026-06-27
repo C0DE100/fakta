@@ -18,7 +18,7 @@ $companyId = current_company_id();
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
 // Praktikant may create and view, but not modify/archive/delete (mirrors clients).
-$restricted = ['update', 'archive', 'unarchive', 'delete', 'restore', 'force_delete', 'add_admin_number', 'update_admin_number', 'delete_admin_number', 'set_status'];
+$restricted = ['update', 'archive', 'unarchive', 'delete', 'restore', 'force_delete', 'add_admin_number', 'update_admin_number', 'delete_admin_number'];
 if (current_role() === 'praktikant' && in_array($action, $restricted, true)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Немате дозвола за оваа акција.']);
@@ -47,20 +47,23 @@ try {
 
         case 'create': {
             $data = [
-                'basis'          => trim($_POST['basis'] ?? ''),
-                'value_amount'   => $_POST['value_amount'] ?? null,
-                'value_currency' => $_POST['value_currency'] ?? 'ден',
-                'status'         => trim($_POST['status'] ?? 'in_progress'),
-                'admin_number'   => trim($_POST['admin_number'] ?? ''),
-                'admin_note'     => trim($_POST['admin_note'] ?? ''),
-                'parties'        => json_field('parties'),
-                'assignees'      => json_field('assignees'),
+                'basis'           => trim($_POST['basis'] ?? ''),
+                'value_amount'    => $_POST['value_amount'] ?? null,
+                'value_currency'  => $_POST['value_currency'] ?? 'ден',
+                'admin_number'    => trim($_POST['admin_number'] ?? ''),
+                'official_person' => trim($_POST['official_person'] ?? ''),
+                'parties'         => json_field('parties'),
+                'assignees'       => json_field('assignees'),
             ];
             if ($data['basis'] === '') {
                 echo json_encode(['success' => false, 'message' => 'Основот е задолжителен.']);
                 exit;
             }
             $id = $cases->create($companyId, $data, current_user()['id'] ?? null);
+            $note = trim($_POST['note'] ?? '');
+            if ($note !== '') {
+                $cases->addNote($companyId, $id, current_user()['id'] ?? null, $note);
+            }
             fakta_audit('case.create', 'case', $id, $cases->caseLabel($companyId, $id));
             echo json_encode(['success' => true, 'message' => 'Предметот е успешно креиран.', 'id' => $id]);
             break;
@@ -76,7 +79,6 @@ try {
                 'basis'          => trim($_POST['basis'] ?? ''),
                 'value_amount'   => $_POST['value_amount'] ?? null,
                 'value_currency' => $_POST['value_currency'] ?? 'ден',
-                'status'         => trim($_POST['status'] ?? 'in_progress'),
                 'parties'        => json_field('parties'),
                 'assignees'      => json_field('assignees'),
             ];
@@ -94,7 +96,6 @@ try {
             $res = $cases->getListPaged($companyId, [
                 'search'      => $_GET['search'] ?? '',
                 'status'      => $_GET['status'] ?? 'active',
-                'phase'       => $_GET['phase'] ?? '',
                 'assignee_id' => (int) ($_GET['assignee_id'] ?? 0),
                 'created_by'  => (int) ($_GET['created_by'] ?? 0),
                 'sort'        => $_GET['sort'] ?? 'newest',
@@ -112,16 +113,6 @@ try {
                 exit;
             }
             echo json_encode(['success' => true, 'data' => $data]);
-            break;
-        }
-
-        case 'set_status': {
-            $id     = (int) ($_POST['id'] ?? 0);
-            $status = trim($_POST['status'] ?? '');
-            if ($id <= 0 || $status === '') { echo json_encode(['success' => false, 'message' => 'Невалиден статус.']); exit; }
-            $ok = $cases->setStatus($companyId, $id, $status);
-            if ($ok) fakta_audit('case.status', 'case', $id, $cases->caseLabel($companyId, $id) . ' → ' . $status);
-            echo json_encode(['success' => $ok, 'message' => $ok ? 'Статусот е сменет.' : 'Невалиден статус.']);
             break;
         }
 
@@ -167,36 +158,42 @@ try {
         case 'force_delete': {
             $id = (int) ($_POST['id'] ?? 0);
             $label = $id > 0 ? $cases->caseLabel($companyId, $id) : null;
-            $ok = $id > 0 && $cases->forceDelete($companyId, $id);
-            if ($ok) fakta_audit('case.purge', 'case', $id, $label);
+            $result = $id > 0 ? $cases->forceDelete($companyId, $id) : ['ok' => false, 'files' => []];
+            $ok = $result['ok'];
+            if ($ok) {
+                foreach ($result['files'] as $rel) {
+                    @unlink(UPLOADS_DIR . '/' . $rel);
+                }
+                fakta_audit('case.purge', 'case', $id, $label);
+            }
             echo json_encode(['success' => $ok, 'message' => $ok ? 'Предметот е трајно избришан.' : 'Предметот не постои во корпата.']);
             break;
         }
 
         case 'add_admin_number': {
-            $id   = (int) ($_POST['id'] ?? 0);
-            $num  = trim($_POST['admin_number'] ?? '');
-            $note = trim($_POST['note'] ?? '');
+            $id       = (int) ($_POST['id'] ?? 0);
+            $num      = trim($_POST['admin_number'] ?? '');
+            $official = trim($_POST['official_person'] ?? '');
             if ($id <= 0 || $num === '') {
                 echo json_encode(['success' => false, 'message' => 'Внеси административен број.']);
                 exit;
             }
-            $ok = $cases->addAdminNumber($companyId, $id, $num, $note);
+            $ok = $cases->addAdminNumber($companyId, $id, $num, $official);
             if ($ok) fakta_audit('case.admin_number', 'case', $id, $cases->caseLabel($companyId, $id) . ' · № ' . $num);
             echo json_encode(['success' => $ok, 'message' => $ok ? 'Административниот број е додаден.' : 'Предметот не постои.']);
             break;
         }
 
         case 'update_admin_number': {
-            $id    = (int) ($_POST['id'] ?? 0);
-            $adminId = (int) ($_POST['admin_id'] ?? 0);
-            $num   = trim($_POST['admin_number'] ?? '');
-            $note  = trim($_POST['note'] ?? '');
+            $id       = (int) ($_POST['id'] ?? 0);
+            $adminId  = (int) ($_POST['admin_id'] ?? 0);
+            $num      = trim($_POST['admin_number'] ?? '');
+            $official = trim($_POST['official_person'] ?? '');
             if ($id <= 0 || $adminId <= 0 || $num === '') {
                 echo json_encode(['success' => false, 'message' => 'Внеси административен број.']);
                 exit;
             }
-            $ok = $cases->updateAdminNumber($companyId, $id, $adminId, $num, $note);
+            $ok = $cases->updateAdminNumber($companyId, $id, $adminId, $num, $official);
             if ($ok) fakta_audit('case.admin_number_edit', 'case', $id, $cases->caseLabel($companyId, $id) . ' · № ' . $num);
             echo json_encode(['success' => $ok, 'message' => $ok ? 'Административниот број е ажуриран.' : 'Записот не постои.']);
             break;
@@ -512,6 +509,12 @@ try {
         case 'suggest_basis': {
             $term = trim($_GET['q'] ?? '');
             echo json_encode(['success' => true, 'data' => $cases->suggestBasis($companyId, $term)]);
+            break;
+        }
+
+        case 'suggest_official': {
+            $term = trim($_GET['q'] ?? '');
+            echo json_encode(['success' => true, 'data' => $cases->suggestOfficial($companyId, $term)]);
             break;
         }
 

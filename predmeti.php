@@ -35,6 +35,15 @@ $canManage = current_role() !== 'praktikant';
             <p class="text-sm text-slate-400 mt-1">Список на сите предмети на канцеларијата</p>
         </div>
 
+        <!-- Resumable draft of an unfinished "new case" (saved to localStorage on close) -->
+        <div id="caseDraftBanner" class="case-draft-banner" style="display:none">
+            <span>Имате недовршен предмет во подготовка.</span>
+            <div class="case-draft-banner-actions">
+                <button type="button" id="caseDraftResume" class="btn-secondary">Продолжи</button>
+                <button type="button" id="caseDraftDiscard" class="btn-secondary btn-secondary--danger">Отфрли</button>
+            </div>
+        </div>
+
         <!-- Tabs: active / archived -->
         <div class="case-tabs" id="caseTabs">
             <button class="case-tab is-active" data-status="active">Активни</button>
@@ -47,16 +56,6 @@ $canManage = current_role() !== 'praktikant';
 
                 <select id="caseAssignee" class="field" style="max-width:12rem">
                     <option value="">Сите вработени</option>
-                </select>
-
-                <select id="casePhase" class="field" style="max-width:11rem">
-                    <option value="">Сите фази</option>
-                    <option value="in_progress">Во тек</option>
-                    <option value="on_hold">Мирување</option>
-                    <option value="appeal">Жалба</option>
-                    <option value="won">Добиен</option>
-                    <option value="lost">Изгубен</option>
-                    <option value="closed">Затворен</option>
                 </select>
 
                 <select id="caseSort" class="field" style="max-width:11rem">
@@ -125,31 +124,20 @@ $canManage = current_role() !== 'praktikant';
                         <span class="case-block-num">1</span>
                         <div>
                             <h3 class="case-block-title">Основни податоци</h3>
-                            <p class="case-block-sub">Што е предметот и колку вреди</p>
+                            <!-- <p class="case-block-sub">Што е предметот и колку вреди</p> -->
                         </div>
                     </div>
 
                     <div class="case-hero-field">
-                        <label for="caseBasis" class="case-hero-label">Што е предметот? <span class="case-req">*</span></label>
+                        <label for="caseBasis" class="case-hero-label">Основ на предмет <span class="case-req">*</span></label>
                         <div style="position:relative">
-                            <input type="text" class="field field--hero" id="caseBasis" placeholder="пр. Оштета на возило, Работен спор, Развод…" required>
+                            <input type="text" class="field field--hero" id="caseBasis" placeholder="пр. Работен спор, Развод, Извршна Постапка..." required>
                             <div id="basisSuggest" class="basis-suggest" style="display:none"></div>
                         </div>
-                        <span class="case-hint">Ова е <strong>основот</strong> — насловот на предметот. Ќе ви предложиме слични постоечки основи.</span>
+                        <!-- <span class="case-hint">Ова е <strong>основот</strong> — насловот на предметот. Ќе ви предложиме слични постоечки основи.</span> -->
                     </div>
 
                     <div class="case-form-grid case-form-grid--2">
-                        <div class="case-field">
-                            <label for="caseStatus" class="case-label">Статус / фаза</label>
-                            <select id="caseStatus" class="field">
-                                <option value="in_progress">Во тек</option>
-                                <option value="on_hold">Мирување</option>
-                                <option value="appeal">Жалба</option>
-                                <option value="won">Добиен</option>
-                                <option value="lost">Изгубен</option>
-                                <option value="closed">Затворен</option>
-                            </select>
-                        </div>
                         <div class="case-field">
                             <label for="caseValue" class="case-label">Вредност на спорот <span class="case-opt">(опционално)</span></label>
                             <div style="display:flex; gap:0.5rem">
@@ -162,7 +150,14 @@ $canManage = current_role() !== 'praktikant';
                         </div>
                         <div class="case-field" id="adminNumberRow">
                             <label for="caseAdminNumber" class="case-label">Административен број <span class="case-opt">(опционално)</span></label>
-                            <input type="text" class="field" id="caseAdminNumber" placeholder="службен број во институција">
+                            <input type="text" class="field" id="caseAdminNumber" placeholder="пр. НПН 123/23, ВПП 123/24...">
+                        </div>
+                        <div class="case-field" id="officialPersonRow">
+                            <label for="caseOfficialPerson" class="case-label">Овластено лице (службеник) <span class="case-opt">(опционално)</span></label>
+                            <div style="position:relative">
+                                <input type="text" class="field" id="caseOfficialPerson" placeholder="пр. судија, нотар, извршител...">
+                                <div id="officialSuggest" class="basis-suggest" style="display:none"></div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -173,15 +168,15 @@ $canManage = current_role() !== 'praktikant';
                         <span class="case-block-num">2</span>
                         <div>
                             <h3 class="case-block-title">Странки</h3>
-                            <p class="case-block-sub">Кој е во предметот — наш клиент и спротивна страна</p>
+                            <!-- <p class="case-block-sub">Кој е во предметот — наш клиент и спротивна страна</p> -->
                         </div>
                     </div>
 
                     <div class="case-subgroup">
                         <div class="case-subhead">
                             <div>
-                                <span class="case-subhead-title">Наши странки <span class="case-section-count">клиенти</span></span>
-                                <span class="case-subhead-desc">Барем една мора да биде клиент на канцеларијата</span>
+                                <span class="case-subhead-title">Наша странка</span>
+                                <!-- <span class="case-subhead-desc">Барем една мора да биде клиент на канцеларијата</span> -->
                             </div>
                             <button type="button" class="case-add-btn" data-add-party="client">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
@@ -194,8 +189,8 @@ $canManage = current_role() !== 'praktikant';
                     <div class="case-subgroup">
                         <div class="case-subhead">
                             <div>
-                                <span class="case-subhead-title">Спротивни странки</span>
-                                <span class="case-subhead-desc">Не се чуваат како клиенти на канцеларијата</span>
+                                <span class="case-subhead-title">Спротивна странка</span>
+                                <!-- <span class="case-subhead-desc">Не се чуваат како клиенти на канцеларијата</span> -->
                             </div>
                             <button type="button" class="case-add-btn" data-add-party="opponent">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
@@ -207,22 +202,28 @@ $canManage = current_role() !== 'praktikant';
                 </section>
 
                 <!-- 3 · Assignees -->
-                <section class="case-block">
+                <section class="case-block case-block--compact">
                     <div class="case-block-head">
                         <span class="case-block-num">3</span>
-                        <div>
-                            <h3 class="case-block-title">Доделено на</h3>
-                            <p class="case-block-sub">Кој ќе работи на предметот (опционално)</p>
-                        </div>
+                        <h3 class="case-block-title">Додели предмет на (вработен)</h3>
                     </div>
-                    <div class="assignee-picker">
+                    <div class="assignee-picker assignee-picker--compact">
                         <div id="assigneeSelected" class="assignee-selected"></div>
                         <div class="assignee-input-wrap">
                             <svg class="assignee-search-icon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                            <input type="text" class="field" id="assigneeSearch" placeholder="Пребарај и додади вработен…" autocomplete="off">
+                            <input type="text" class="field" id="assigneeSearch" placeholder="Пребарај вработен…" autocomplete="off">
                             <div id="assigneeDropdown" class="assignee-dropdown" style="display:none"></div>
                         </div>
                     </div>
+                </section>
+
+                <!-- 4 · Notes (create only — managed via the Белешки tab once the case exists) -->
+                <section class="case-block" id="caseNoteBlock">
+                    <div class="case-block-head">
+                        <span class="case-block-num">4</span>
+                        <h3 class="case-block-title">Забелешка</h3>
+                    </div>
+                    <textarea class="field" id="caseInitialNote" rows="2" placeholder="Забелешка за предметот (опционално)"></textarea>
                 </section>
 
                 <div class="form-actions">
@@ -302,7 +303,7 @@ $canManage = current_role() !== 'praktikant';
                 <p class="csv-intro-text">
                     Колони: <strong>Основ</strong> и <strong>Клиент</strong> се задолжителни. Клиентот мора да постои во системот
                     (се совпаѓа по име). Опционални: Вредност, Валута, Административен број, Својство на клиент,
-                    Спротивна странка, Тип на спротивна, Својство на спротивна, Адвокат на спротивна, Доделено на.
+                    Спротивна странка, Својство на спротивна, Застапник на спротивна, Доделено на.
                 </p>
                 <button type="button" id="csvTemplateBtn" class="btn-secondary">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>

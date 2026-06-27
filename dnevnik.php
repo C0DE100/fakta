@@ -57,7 +57,6 @@ $ACTIONS = [
     'case.import'              => ['Импортирани предмети (CSV)', 'create'],
     'case.note'                => ['Додадена белешка', 'edit'],
     'case.todo'                => ['Додадена задача', 'edit'],
-    'case.status'              => ['Сменет статус на предмет', 'edit'],
     'case.hearing'             => ['Додаден настан', 'create'],
     'case.document'            => ['Прикачен документ на предмет', 'create'],
 ];

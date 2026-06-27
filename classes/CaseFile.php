@@ -25,11 +25,8 @@ class CaseFile
     /** Allowed note types. */
     public const NOTE_TYPES = ['general', 'call', 'meeting', 'important'];
 
-    /** Allowed case lifecycle phases (separate from archived). */
-    public const CASE_STATUSES = ['in_progress', 'on_hold', 'appeal', 'won', 'lost', 'closed'];
-
-    /** Calendar event kinds: рочиште / судење / состанок. */
-    public const HEARING_KINDS = ['hearing', 'trial', 'meeting'];
+    /** Calendar event kinds: рочиште / состанок. ('trial' kept only for legacy rows; no longer assignable.) */
+    public const HEARING_KINDS = ['hearing', 'meeting'];
 
     public function __construct(Database $db)
     {
@@ -75,7 +72,7 @@ class CaseFile
      *   'value_amount'   => float|null,
      *   'value_currency' => 'ден'|'евра',
      *   'admin_number'   => string|null,
-     *   'parties'        => [ ['side','client_id','name','entity_type','opposing_lawyer','role'], … ],
+     *   'parties'        => [ ['side','client_id','name','opposing_representative','role'], … ],
      *   'assignees'      => [userId, …],
      * ]
      * Returns the new case id. Throws on a missing client party.
@@ -133,8 +130,8 @@ class CaseFile
         $seq  = $this->nextCaseSeq($companyId, $year);
 
         $stmt = $pdo->prepare(
-            "INSERT INTO cases (company_id, case_seq, case_year, basis, value_amount, value_currency, status, created_by, created_at)
-             VALUES (:cid, :seq, :year, :basis, :amount, :currency, :status, :by, NOW())"
+            "INSERT INTO cases (company_id, case_seq, case_year, basis, value_amount, value_currency, created_by, created_at)
+             VALUES (:cid, :seq, :year, :basis, :amount, :currency, :by, NOW())"
         );
         $stmt->execute([
             ':cid'      => $companyId,
@@ -143,7 +140,6 @@ class CaseFile
             ':basis'    => $this->nz($data['basis'] ?? null),
             ':amount'   => $this->money($data['value_amount'] ?? null),
             ':currency' => ($data['value_currency'] ?? 'ден') === 'евра' ? 'евра' : 'ден',
-            ':status'   => in_array($data['status'] ?? '', self::CASE_STATUSES, true) ? $data['status'] : 'in_progress',
             ':by'       => $createdBy,
         ]);
         $caseId = (int) $pdo->lastInsertId();
@@ -153,7 +149,7 @@ class CaseFile
 
         $adminNo = trim((string) ($data['admin_number'] ?? ''));
         if ($adminNo !== '') {
-            $this->addAdminNumberRaw($companyId, $caseId, $adminNo, $data['admin_note'] ?? null);
+            $this->addAdminNumberRaw($companyId, $caseId, $adminNo, $data['official_person'] ?? null);
         }
 
         $this->rebuildSearchText($companyId, $caseId);
@@ -176,14 +172,13 @@ class CaseFile
         try {
             $stmt = $pdo->prepare(
                 "UPDATE cases
-                    SET basis = :basis, value_amount = :amount, value_currency = :currency, status = :status
+                    SET basis = :basis, value_amount = :amount, value_currency = :currency
                   WHERE id = :id AND company_id = :cid AND deleted_at IS NULL"
             );
             $stmt->execute([
                 ':basis'    => $this->nz($data['basis'] ?? null),
                 ':amount'   => $this->money($data['value_amount'] ?? null),
                 ':currency' => ($data['value_currency'] ?? 'ден') === 'евра' ? 'евра' : 'ден',
-                ':status'   => in_array($data['status'] ?? '', self::CASE_STATUSES, true) ? $data['status'] : 'in_progress',
                 ':id'       => $caseId,
                 ':cid'      => $companyId,
             ]);
@@ -237,11 +232,6 @@ class CaseFile
             $params[':aid']        = (int) $filters['assignee_id'];
         }
 
-        if (!empty($filters['phase']) && in_array($filters['phase'], self::CASE_STATUSES, true)) {
-            $conds[]          = 'c.status = :phase';
-            $params[':phase'] = $filters['phase'];
-        }
-
         $where = implode(' AND ', $conds);
 
         $order = ($filters['sort'] ?? '') === 'oldest'
@@ -258,7 +248,7 @@ class CaseFile
 
         $sql = "SELECT
                     c.id, c.case_seq, c.case_year, c.archive_seq, c.basis,
-                    c.value_amount, c.value_currency, c.status, c.archived_at, c.created_at,
+                    c.value_amount, c.value_currency, c.archived_at, c.created_at,
                     " . self::CASE_NUMBER_SQL . " AS case_number,
                     pc.role AS client_role,
                     COALESCE(NULLIF(pc.name, ''),
@@ -269,14 +259,14 @@ class CaseFile
                     po.name AS opponent_name,
                     an.admin_number AS admin_number,
                     (SELECT MIN(h.hearing_at) FROM case_hearings h
-                       WHERE h.case_id = c.id AND h.hearing_at >= NOW()) AS next_hearing,
-                    (SELECT COUNT(*) FROM case_files cf WHERE cf.case_id = c.id) AS doc_count,
+                       WHERE h.case_id = c.id AND h.deleted_at IS NULL AND h.hearing_at >= NOW()) AS next_hearing,
+                    (SELECT COUNT(*) FROM case_files cf WHERE cf.case_id = c.id AND cf.deleted_at IS NULL) AS doc_count,
                     u.name AS created_by_name
                 FROM cases c
-                LEFT JOIN case_parties pc ON pc.case_id = c.id AND pc.side = 'client'   AND pc.is_primary = 1
+                LEFT JOIN case_parties pc ON pc.case_id = c.id AND pc.side = 'client'   AND pc.is_primary = 1 AND pc.deleted_at IS NULL
                 LEFT JOIN clients cl      ON cl.id = pc.client_id
-                LEFT JOIN case_parties po ON po.case_id = c.id AND po.side = 'opponent' AND po.is_primary = 1
-                LEFT JOIN case_admin_numbers an ON an.case_id = c.id AND an.is_current = 1
+                LEFT JOIN case_parties po ON po.case_id = c.id AND po.side = 'opponent' AND po.is_primary = 1 AND po.deleted_at IS NULL
+                LEFT JOIN case_admin_numbers an ON an.case_id = c.id AND an.is_current = 1 AND an.deleted_at IS NULL
                 LEFT JOIN users u         ON u.id = c.created_by
                 WHERE {$where}
                 ORDER BY {$order}
@@ -318,14 +308,14 @@ class CaseFile
 
         // Parties (resolve linked client names live).
         $pstmt = $this->db->prepare(
-            "SELECT p.id, p.side, p.client_id, p.entity_type, p.opposing_lawyer, p.role, p.is_primary,
+            "SELECT p.id, p.side, p.client_id, p.opposing_representative, p.role, p.is_primary,
                     COALESCE(NULLIF(p.name, ''),
                              CASE WHEN cl.type = 'company' THEN cl.company_name ELSE cl.full_name END
                     ) AS name,
                     cl.type AS client_type
              FROM case_parties p
              LEFT JOIN clients cl ON cl.id = p.client_id
-             WHERE p.case_id = :id AND p.company_id = :cid
+             WHERE p.case_id = :id AND p.company_id = :cid AND p.deleted_at IS NULL
              ORDER BY p.side, p.is_primary DESC, p.id"
         );
         $pstmt->execute([':id' => $caseId, ':cid' => $companyId]);
@@ -335,7 +325,7 @@ class CaseFile
         $astmt = $this->db->prepare(
             "SELECT u.id, u.name FROM case_assignees ca
              JOIN users u ON u.id = ca.user_id
-             WHERE ca.case_id = :id AND ca.company_id = :cid
+             WHERE ca.case_id = :id AND ca.company_id = :cid AND ca.deleted_at IS NULL
              ORDER BY u.name"
         );
         $astmt->execute([':id' => $caseId, ':cid' => $companyId]);
@@ -343,9 +333,9 @@ class CaseFile
 
         // Admin-number history (current first).
         $nstmt = $this->db->prepare(
-            "SELECT id, admin_number, is_current, note, created_at
+            "SELECT id, admin_number, is_current, official_person, created_at
              FROM case_admin_numbers
-             WHERE case_id = :id AND company_id = :cid
+             WHERE case_id = :id AND company_id = :cid AND deleted_at IS NULL
              ORDER BY is_current DESC, created_at DESC, id DESC"
         );
         $nstmt->execute([':id' => $caseId, ':cid' => $companyId]);
@@ -357,20 +347,6 @@ class CaseFile
     /* =====================================================================
      | Archive / unarchive
      * =================================================================== */
-
-    /** Quick-set a case's lifecycle phase. */
-    public function setStatus(int $companyId, int $caseId, string $status): bool
-    {
-        if (!in_array($status, self::CASE_STATUSES, true)) {
-            return false;
-        }
-        $stmt = $this->db->prepare(
-            "UPDATE cases SET status = :st WHERE id = :id AND company_id = :cid AND deleted_at IS NULL"
-        );
-        $stmt->execute([':st' => $status, ':id' => $caseId, ':cid' => $companyId]);
-        return $stmt->rowCount() > 0
-            || (bool) ($this->getById($companyId, $caseId)); // no-op (same value) still ok
-    }
 
     /** Archive a case: stamp archived_at and assign the next per-company /N suffix. */
     public function archive(int $companyId, int $caseId): bool
@@ -423,24 +399,60 @@ class CaseFile
      | Soft delete / trash
      * =================================================================== */
 
+    /** Child tables that carry their own deleted_at, soft-deleted/restored together with the case. */
+    private const SOFT_DELETE_CHILD_TABLES = [
+        'case_parties', 'case_assignees', 'case_admin_numbers',
+        'case_notes', 'case_todos', 'case_hearings', 'case_files',
+    ];
+
     public function softDelete(int $companyId, int $caseId): bool
     {
-        $stmt = $this->db->prepare(
-            "UPDATE cases SET deleted_at = NOW()
-             WHERE id = :id AND company_id = :cid AND deleted_at IS NULL"
-        );
-        $stmt->execute([':id' => $caseId, ':cid' => $companyId]);
-        return $stmt->rowCount() > 0;
+        $pdo = $this->db->getConnection();
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare(
+                "UPDATE cases SET deleted_at = NOW()
+                 WHERE id = :id AND company_id = :cid AND deleted_at IS NULL"
+            );
+            $stmt->execute([':id' => $caseId, ':cid' => $companyId]);
+            $changed = $stmt->rowCount() > 0;
+            if ($changed) {
+                foreach (self::SOFT_DELETE_CHILD_TABLES as $t) {
+                    $pdo->prepare("UPDATE {$t} SET deleted_at = NOW() WHERE case_id = :id AND company_id = :cid AND deleted_at IS NULL")
+                        ->execute([':id' => $caseId, ':cid' => $companyId]);
+                }
+            }
+            $pdo->commit();
+            return $changed;
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
     }
 
     public function restore(int $companyId, int $caseId): bool
     {
-        $stmt = $this->db->prepare(
-            "UPDATE cases SET deleted_at = NULL
-             WHERE id = :id AND company_id = :cid AND deleted_at IS NOT NULL"
-        );
-        $stmt->execute([':id' => $caseId, ':cid' => $companyId]);
-        return $stmt->rowCount() > 0;
+        $pdo = $this->db->getConnection();
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare(
+                "UPDATE cases SET deleted_at = NULL
+                 WHERE id = :id AND company_id = :cid AND deleted_at IS NOT NULL"
+            );
+            $stmt->execute([':id' => $caseId, ':cid' => $companyId]);
+            $changed = $stmt->rowCount() > 0;
+            if ($changed) {
+                foreach (self::SOFT_DELETE_CHILD_TABLES as $t) {
+                    $pdo->prepare("UPDATE {$t} SET deleted_at = NULL WHERE case_id = :id AND company_id = :cid")
+                        ->execute([':id' => $caseId, ':cid' => $companyId]);
+                }
+            }
+            $pdo->commit();
+            return $changed;
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
     }
 
     public function getDeleted(int $companyId): array
@@ -455,22 +467,35 @@ class CaseFile
         return $stmt->fetchAll();
     }
 
-    public function forceDelete(int $companyId, int $caseId): bool
+    /**
+     * Permanently delete a (soft-deleted) case and everything tied to it:
+     * parties, assignees, admin numbers, notes, to-dos, hearings and uploaded
+     * files. Generated documents are kept (they're real documents, not case
+     * attachments) but unlinked from the case. Returns the stored_rel paths
+     * of removed files so the caller can unlink them from disk.
+     */
+    public function forceDelete(int $companyId, int $caseId): array
     {
         $pdo = $this->db->getConnection();
         $pdo->beginTransaction();
         try {
+            $filesStmt = $pdo->prepare("SELECT stored_rel FROM case_files WHERE case_id = :id AND company_id = :cid");
+            $filesStmt->execute([':id' => $caseId, ':cid' => $companyId]);
+            $files = $filesStmt->fetchAll(PDO::FETCH_COLUMN);
+
             $del = $pdo->prepare("DELETE FROM cases WHERE id = :id AND company_id = :cid AND deleted_at IS NOT NULL");
             $del->execute([':id' => $caseId, ':cid' => $companyId]);
             $ok = $del->rowCount() > 0;
             if ($ok) {
-                foreach (['case_parties', 'case_assignees', 'case_admin_numbers'] as $t) {
+                foreach (self::SOFT_DELETE_CHILD_TABLES as $t) {
                     $pdo->prepare("DELETE FROM {$t} WHERE case_id = :id AND company_id = :cid")
                         ->execute([':id' => $caseId, ':cid' => $companyId]);
                 }
+                $pdo->prepare("UPDATE generated_documents SET case_id = NULL WHERE case_id = :id AND company_id = :cid")
+                    ->execute([':id' => $caseId, ':cid' => $companyId]);
             }
             $pdo->commit();
-            return $ok;
+            return ['ok' => $ok, 'files' => $ok ? $files : []];
         } catch (Throwable $e) {
             $pdo->rollBack();
             throw $e;
@@ -489,7 +514,10 @@ class CaseFile
         $ids->execute([':cid' => $companyId]);
         $rows = $ids->fetchAll(PDO::FETCH_COLUMN);
         foreach ($rows as $id) {
-            $this->forceDelete($companyId, (int) $id);
+            $res = $this->forceDelete($companyId, (int) $id);
+            foreach ($res['files'] as $rel) {
+                @unlink(UPLOADS_DIR . '/' . $rel);
+            }
         }
         return count($rows);
     }
@@ -499,7 +527,7 @@ class CaseFile
      * =================================================================== */
 
     /** Add a new admin number and make it the current one. */
-    public function addAdminNumber(int $companyId, int $caseId, string $number, ?string $note = null): bool
+    public function addAdminNumber(int $companyId, int $caseId, string $number, ?string $officialPerson = null): bool
     {
         $number = trim($number);
         if ($number === '') {
@@ -515,7 +543,7 @@ class CaseFile
         $pdo = $this->db->getConnection();
         $pdo->beginTransaction();
         try {
-            $this->addAdminNumberRaw($companyId, $caseId, $number, $note);
+            $this->addAdminNumberRaw($companyId, $caseId, $number, $officialPerson);
             $this->rebuildSearchText($companyId, $caseId);
             $pdo->commit();
             return true;
@@ -525,23 +553,23 @@ class CaseFile
         }
     }
 
-    private function addAdminNumberRaw(int $companyId, int $caseId, string $number, ?string $note): void
+    private function addAdminNumberRaw(int $companyId, int $caseId, string $number, ?string $officialPerson): void
     {
         $this->db->prepare("UPDATE case_admin_numbers SET is_current = 0 WHERE case_id = :id AND company_id = :cid")
             ->execute([':id' => $caseId, ':cid' => $companyId]);
         $this->db->prepare(
-            "INSERT INTO case_admin_numbers (company_id, case_id, admin_number, is_current, note, created_at)
-             VALUES (:cid, :id, :num, 1, :note, NOW())"
+            "INSERT INTO case_admin_numbers (company_id, case_id, admin_number, is_current, official_person, created_at)
+             VALUES (:cid, :id, :num, 1, :official, NOW())"
         )->execute([
-            ':cid'  => $companyId,
-            ':id'   => $caseId,
-            ':num'  => $number,
-            ':note' => $this->nz($note),
+            ':cid'     => $companyId,
+            ':id'      => $caseId,
+            ':num'     => $number,
+            ':official' => $this->nz($officialPerson),
         ]);
     }
 
-    /** Edit one admin-number entry (number + note). Tenant- and case-scoped. */
-    public function updateAdminNumber(int $companyId, int $caseId, int $adminId, string $number, ?string $note): bool
+    /** Edit one admin-number entry (number + службено лице). Tenant- and case-scoped. */
+    public function updateAdminNumber(int $companyId, int $caseId, int $adminId, string $number, ?string $officialPerson): bool
     {
         $number = trim($number);
         if ($number === '') {
@@ -555,14 +583,14 @@ class CaseFile
             return false;
         }
         $this->db->prepare(
-            "UPDATE case_admin_numbers SET admin_number = :num, note = :note
+            "UPDATE case_admin_numbers SET admin_number = :num, official_person = :official
              WHERE id = :aid AND case_id = :id AND company_id = :cid"
         )->execute([
-            ':num'  => $number,
-            ':note' => $this->nz($note),
-            ':aid'  => $adminId,
-            ':id'   => $caseId,
-            ':cid'  => $companyId,
+            ':num'     => $number,
+            ':official' => $this->nz($officialPerson),
+            ':aid'     => $adminId,
+            ':id'      => $caseId,
+            ':cid'     => $companyId,
         ]);
         $this->rebuildSearchText($companyId, $caseId);
         return true;
@@ -668,7 +696,7 @@ class CaseFile
             "SELECT n.id, n.body, n.note_type, n.is_pinned, n.user_id, n.created_at, n.updated_at, u.name AS author_name
              FROM case_notes n
              LEFT JOIN users u ON u.id = n.user_id
-             WHERE n.case_id = :id AND n.company_id = :cid
+             WHERE n.case_id = :id AND n.company_id = :cid AND n.deleted_at IS NULL
              ORDER BY n.is_pinned DESC, n.created_at DESC, n.id DESC"
         );
         $stmt->execute([':id' => $caseId, ':cid' => $companyId]);
@@ -776,7 +804,7 @@ class CaseFile
             "SELECT h.id, h.kind, h.title, h.hearing_at, h.location, h.note, h.created_by, cu.name AS creator_name
              FROM case_hearings h
              LEFT JOIN users cu ON cu.id = h.created_by
-             WHERE h.case_id = :id AND h.company_id = :cid
+             WHERE h.case_id = :id AND h.company_id = :cid AND h.deleted_at IS NULL
              ORDER BY h.hearing_at ASC"
         );
         $stmt->execute([':id' => $caseId, ':cid' => $companyId]);
@@ -817,10 +845,10 @@ class CaseFile
                       WHERE ca2.case_id = c.id) AS assignees
              FROM case_hearings h
              JOIN cases c ON c.id = h.case_id AND c.deleted_at IS NULL
-             LEFT JOIN case_parties pc ON pc.case_id = c.id AND pc.side = 'client' AND pc.is_primary = 1
+             LEFT JOIN case_parties pc ON pc.case_id = c.id AND pc.side = 'client' AND pc.is_primary = 1 AND pc.deleted_at IS NULL
              LEFT JOIN clients cl ON cl.id = pc.client_id
              LEFT JOIN users cu ON cu.id = h.created_by
-             WHERE h.company_id = :cid
+             WHERE h.company_id = :cid AND h.deleted_at IS NULL
                AND h.hearing_at >= :from AND h.hearing_at < (:to + INTERVAL 1 DAY)
                {$assigneeFilter}
              ORDER BY h.hearing_at ASC"
@@ -926,7 +954,7 @@ class CaseFile
              FROM case_todos t
              LEFT JOIN users a  ON a.id = t.assigned_to
              LEFT JOIN users cu ON cu.id = t.created_by
-             WHERE t.case_id = :id AND t.company_id = :cid
+             WHERE t.case_id = :id AND t.company_id = :cid AND t.deleted_at IS NULL
              ORDER BY FIELD(t.status, 'in_progress', 'open', 'waiting', 'done', 'declined'),
                       (t.due_date IS NULL) ASC, t.due_date ASC, t.created_at ASC"
         );
@@ -1023,7 +1051,7 @@ class CaseFile
             "SELECT f.id, f.orig_name, f.ext, f.size_bytes, f.created_at, u.name AS uploaded_by_name
              FROM case_files f
              LEFT JOIN users u ON u.id = f.uploaded_by
-             WHERE f.case_id = :case AND f.company_id = :cid
+             WHERE f.case_id = :case AND f.company_id = :cid AND f.deleted_at IS NULL
              ORDER BY f.id DESC"
         );
         $stmt->execute([':case' => $caseId, ':cid' => $companyId]);
@@ -1101,6 +1129,33 @@ class CaseFile
         return $stmt->fetchAll();
     }
 
+    /**
+     * Suggest historic службено лице values (judge/notary/bailiff/clerk) for
+     * consistency, ranked by how often each value is used.
+     */
+    public function suggestOfficial(int $companyId, string $term, int $limit = 8): array
+    {
+        $term = trim($term);
+        if (mb_strlen($term) < 2) {
+            return [];
+        }
+        $stmt = $this->db->prepare(
+            "SELECT an.official_person, COUNT(*) AS cnt
+             FROM case_admin_numbers an
+             JOIN cases c ON c.id = an.case_id
+             WHERE an.company_id = :cid AND an.deleted_at IS NULL AND c.deleted_at IS NULL
+               AND an.official_person IS NOT NULL AND an.official_person <> '' AND an.official_person LIKE :q
+             GROUP BY an.official_person
+             ORDER BY cnt DESC, CHAR_LENGTH(an.official_person) ASC, an.official_person ASC
+             LIMIT :lim"
+        );
+        $stmt->bindValue(':cid', $companyId, PDO::PARAM_INT);
+        $stmt->bindValue(':q', '%' . $term . '%');
+        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
     /* =====================================================================
      | Internal helpers
      * =================================================================== */
@@ -1124,10 +1179,9 @@ class CaseFile
                     continue;
                 }
                 $out['opponent'][] = [
-                    'name'            => $name,
-                    'entity_type'     => ($p['entity_type'] ?? '') === 'company' ? 'company' : 'individual',
-                    'opposing_lawyer' => trim((string) ($p['opposing_lawyer'] ?? '')),
-                    'role'            => $role,
+                    'name'                    => $name,
+                    'opposing_representative' => trim((string) ($p['opposing_representative'] ?? '')),
+                    'role'                    => $role,
                 ];
             }
         }
@@ -1143,8 +1197,8 @@ class CaseFile
     {
         $stmt = $this->db->prepare(
             "INSERT INTO case_parties
-                (company_id, case_id, side, client_id, name, entity_type, opposing_lawyer, role, is_primary, created_at)
-             VALUES (:cid, :case, :side, :client, :name, :etype, :lawyer, :role, :primary, NOW())"
+                (company_id, case_id, side, client_id, name, opposing_representative, role, is_primary, created_at)
+             VALUES (:cid, :case, :side, :client, :name, :rep, :role, :primary, NOW())"
         );
         foreach (['client', 'opponent'] as $side) {
             foreach ($normalized[$side] as $i => $p) {
@@ -1154,9 +1208,8 @@ class CaseFile
                     ':side'    => $side,
                     ':client'  => $side === 'client' ? $p['client_id'] : null,
                     ':name'    => $side === 'opponent' ? $p['name'] : null,
-                    ':etype'   => $side === 'opponent' ? $p['entity_type'] : null,
-                    ':lawyer'  => $side === 'opponent' ? $this->nz($p['opposing_lawyer']) : null,
-                    ':role'    => $p['role'] !== '' ? $p['role'] : ($side === 'client' ? 'Странка' : 'Спротивна странка'),
+                    ':rep'     => $side === 'opponent' ? $this->nz($p['opposing_representative']) : null,
+                    ':role'    => $p['role'],
                     ':primary' => $i === 0 ? 1 : 0,
                 ]);
             }
@@ -1191,7 +1244,7 @@ class CaseFile
         $stmt = $this->db->prepare(
             "SELECT ca.case_id, u.id, u.name
              FROM case_assignees ca JOIN users u ON u.id = ca.user_id
-             WHERE ca.company_id = ? AND ca.case_id IN ({$in})
+             WHERE ca.company_id = ? AND ca.case_id IN ({$in}) AND ca.deleted_at IS NULL
              ORDER BY u.name"
         );
         $stmt->execute(array_merge([$companyId], $ids));
@@ -1219,7 +1272,7 @@ class CaseFile
                              CASE WHEN cl.type = 'company' THEN cl.company_name ELSE cl.full_name END) AS name
              FROM case_parties p
              LEFT JOIN clients cl ON cl.id = p.client_id
-             WHERE p.company_id = ? AND p.case_id IN ({$in})
+             WHERE p.company_id = ? AND p.case_id IN ({$in}) AND p.deleted_at IS NULL
              ORDER BY p.side, p.is_primary DESC, p.id"
         );
         $stmt->execute(array_merge([$companyId], $ids));
@@ -1236,7 +1289,7 @@ class CaseFile
 
     /**
      * Rebuild the denormalized search blob for one case: number + basis +
-     * party names/roles + opposing lawyers + every admin number it ever had.
+     * party names/roles + opposing representatives + every admin number it ever had.
      */
     private function rebuildSearchText(int $companyId, int $caseId): void
     {
@@ -1250,23 +1303,24 @@ class CaseFile
         $bits = [$base['case_number'] ?? '', $base['basis'] ?? ''];
 
         $p = $this->db->prepare(
-            "SELECT p.role, p.name, p.opposing_lawyer,
+            "SELECT p.role, p.name, p.opposing_representative,
                     CASE WHEN cl.type = 'company' THEN cl.company_name ELSE cl.full_name END AS client_name
              FROM case_parties p LEFT JOIN clients cl ON cl.id = p.client_id
-             WHERE p.case_id = :id AND p.company_id = :cid"
+             WHERE p.case_id = :id AND p.company_id = :cid AND p.deleted_at IS NULL"
         );
         $p->execute([':id' => $caseId, ':cid' => $companyId]);
         foreach ($p->fetchAll() as $row) {
             $bits[] = $row['role'];
             $bits[] = $row['name'];
             $bits[] = $row['client_name'];
-            $bits[] = $row['opposing_lawyer'];
+            $bits[] = $row['opposing_representative'];
         }
 
-        $n = $this->db->prepare("SELECT admin_number FROM case_admin_numbers WHERE case_id = :id AND company_id = :cid");
+        $n = $this->db->prepare("SELECT admin_number, official_person FROM case_admin_numbers WHERE case_id = :id AND company_id = :cid AND deleted_at IS NULL");
         $n->execute([':id' => $caseId, ':cid' => $companyId]);
-        foreach ($n->fetchAll(PDO::FETCH_COLUMN) as $num) {
-            $bits[] = $num;
+        foreach ($n->fetchAll() as $row) {
+            $bits[] = $row['admin_number'];
+            $bits[] = $row['official_person'];
         }
 
         $text = trim(preg_replace('/\s+/u', ' ', implode(' ', array_filter($bits, fn($b) => $b !== null && $b !== ''))));

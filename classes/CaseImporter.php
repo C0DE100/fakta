@@ -29,9 +29,8 @@ class CaseImporter
         'client'          => ['клиент', 'klient', 'наш клиент', 'странка'],
         'client_role'     => ['својство на клиент', 'својство клиент', 'улога на клиент', 'svojstvo na klient'],
         'opponent'        => ['спротивна странка', 'спротивна', 'противник', 'sprotivna stranka'],
-        'opponent_type'   => ['тип на спротивна', 'тип спротивна', 'тип', 'tip'],
         'opponent_role'   => ['својство на спротивна', 'улога на спротивна', 'svojstvo na sprotivna'],
-        'opponent_lawyer' => ['адвокат', 'адвокат на спротивна', 'полномошник', 'advokat'],
+        'opponent_representative' => ['застапник', 'застапник на спротивна', 'полномошник', 'zastapnik'],
         'assignees'       => ['доделено на', 'зададено на', 'задолжени', 'вработени', 'zadadeno na'],
     ];
 
@@ -229,13 +228,11 @@ class CaseImporter
         $oppName = $get('opponent');
         $parties = [['side' => 'client', 'client_id' => $clientId, 'role' => $get('client_role')]];
         if ($oppName !== '') {
-            $oppType = $this->normalize($get('opponent_type'));
             $parties[] = [
-                'side'            => 'opponent',
-                'name'            => $oppName,
-                'entity_type'     => in_array($oppType, ['правно', 'правно лице', 'company', 'firma', 'фирма'], true) ? 'company' : 'individual',
-                'opposing_lawyer' => $get('opponent_lawyer'),
-                'role'            => $get('opponent_role'),
+                'side'                    => 'opponent',
+                'name'                    => $oppName,
+                'opposing_representative' => $get('opponent_representative'),
+                'role'                    => $get('opponent_role'),
             ];
         }
 

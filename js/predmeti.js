@@ -15,19 +15,9 @@ $(function () {
         view: localStorage.getItem('casesView') === 'list' ? 'list' : 'grid',
         search: '',
         assignee: '',
-        phase: '',
         sort: 'newest',
         page: 1
     };
-
-    var CASE_STATUS = {
-        in_progress: 'Во тек', on_hold: 'Мирување', appeal: 'Жалба',
-        won: 'Добиен', lost: 'Изгубен', closed: 'Затворен'
-    };
-    function phaseBadge(status) {
-        var st = status || 'in_progress';
-        return '<span class="case-badge cstat--' + st + '">' + (CASE_STATUS[st] || st) + '</span>';
-    }
 
     var clients = [];     // [{id, type, company_name, full_name}]
     var members = [];     // [{id, name, role}]
@@ -100,7 +90,7 @@ $(function () {
             url: API, dataType: 'json',
             data: {
                 action: 'get_list', status: state.status, search: state.search,
-                assignee_id: state.assignee, phase: state.phase, sort: state.sort, page: state.page
+                assignee_id: state.assignee, sort: state.sort, page: state.page
             },
             success: function (res) {
                 if (!res.success) { $('#casesList').html('<p class="list-msg err" style="padding:1rem 0">' + esc(res.message) + '</p>'); return; }
@@ -149,17 +139,18 @@ $(function () {
         if (single) return esc(single) + roleChip(singleRole);
         return muted(emptyTxt);
     }
-    // All parties of one side, comma-joined (list row).
-    function partyInline(arr, single, singleRole) {
+    // All parties of one side, stacked one below another (list row).
+    function partyStack(arr, single, singleRole) {
         if (arr && arr.length) {
-            return arr.map(function (p) { return '<strong>' + esc(p.name || '—') + '</strong>' + roleChip(p.role); }).join(', ');
+            return arr.map(function (p) { return '<span class="case-party-stack-line"><strong>' + esc(p.name || '—') + '</strong>' + roleChip(p.role) + '</span>'; }).join('');
         }
-        return '<strong>' + esc(single || '—') + '</strong>' + roleChip(singleRole);
+        return '<span class="case-party-stack-line"><strong>' + esc(single || '—') + '</strong>' + roleChip(singleRole) + '</span>';
     }
 
     function statusBadge(r) {
-        return phaseBadge(r.status)
-            + (r.archived_at ? '<span class="case-badge case-badge--archived">Архивиран</span>' : '');
+        return r.archived_at
+            ? '<span class="case-badge case-badge--archived">Архивиран</span>'
+            : '<span class="case-badge case-badge--active">Активен</span>';
     }
 
     function actionsHtml(r) {
@@ -187,12 +178,11 @@ $(function () {
         return '<div class="case-card" data-id="' + r.id + '">'
             + actionsHtml(r)
             + '<div class="case-card-num">'
-            +   '<span class="case-fld-l">Број на предмет</span>'
             +   '<div class="case-card-num-row"><span class="case-num">' + esc(r.case_number) + '</span>' + statusBadge(r) + '</div>'
             + '</div>'
             + fld('Основ', r.basis ? esc(r.basis) : muted('Нема основ'))
-            + fld((r.client_parties && r.client_parties.length > 1) ? 'Наши странки' : 'Наш клиент', partyLines(r.client_parties, r.client_name, r.client_role, '—'))
-            + fld((r.opponent_parties && r.opponent_parties.length > 1) ? 'Спротивни странки' : 'Спротивна странка', partyLines(r.opponent_parties, r.opponent_name, r.opponent_role, 'Нема'))
+            + fld((r.client_parties && r.client_parties.length > 1) ? 'Наши странка' : 'Наш клиент', partyLines(r.client_parties, r.client_name, r.client_role, '—'))
+            + fld((r.opponent_parties && r.opponent_parties.length > 1) ? 'Спротивна странка' : 'Спротивна странка', partyLines(r.opponent_parties, r.opponent_name, r.opponent_role, 'Нема'))
             + '<div class="case-card-two">'
             +   fld('Вредност', value ? esc(value) : muted('—'))
             +   fld('Административен број', r.admin_number ? esc(r.admin_number) : muted('—'))
@@ -204,10 +194,6 @@ $(function () {
             +     '<span class="case-fld-l">Доделено на</span>'
             +     '<div class="case-assignees">' + (assigneeAvatars(r.assignees) || muted('Никој')) + '</div>'
             +   '</div>'
-            +   (r.created_by_name
-                    ? '<div class="case-foot-block case-foot-right"><span class="case-fld-l">Креирал</span>'
-                      + '<span class="case-creator">' + esc(r.created_by_name) + '</span></div>'
-                    : '')
             + '</div>'
             + '</div>';
     }
@@ -229,12 +215,10 @@ $(function () {
         var value = fmtMoney(r.value_amount, r.value_currency);
         return '<div class="case-row" data-id="' + r.id + '">'
             + '<div class="case-cell case-cell-num"><span class="case-num-sm">' + esc(r.case_number) + '</span>'
-            +   phaseBadge(r.status)
-            +   (r.archived_at ? '<span class="case-badge case-badge--archived">арх.</span>' : '') + '</div>'
+            +   (r.archived_at ? '<span class="case-badge case-badge--archived">арх.</span>' : '<span class="case-badge case-badge--active">активен</span>') + '</div>'
             + '<div class="case-cell case-cell-parties">'
-            +   partyInline(r.client_parties, r.client_name, r.client_role)
-            +   '<span class="case-row-vs">против</span>'
-            +   partyInline(r.opponent_parties, r.opponent_name, r.opponent_role)
+            +   partyStack(r.client_parties, r.client_name, r.client_role)
+            +   partyStack(r.opponent_parties, r.opponent_name, r.opponent_role)
             + '</div>'
             + '<div class="case-cell case-cell-basis">' + (r.basis ? esc(r.basis) : muted('—')) + '</div>'
             + '<div class="case-cell case-cell-value">' + (value ? esc(value) : muted('—')) + '</div>'
@@ -252,7 +236,6 @@ $(function () {
         searchTimer = setTimeout(function () { state.page = 1; loadList(); }, 300);
     });
     $('#caseAssignee').on('change', function () { state.assignee = $(this).val(); state.page = 1; loadList(); });
-    $('#casePhase').on('change', function () { state.phase = $(this).val(); state.page = 1; loadList(); });
     $('#caseSort').on('change', function () { state.sort = $(this).val(); state.page = 1; loadList(); });
 
     $('#caseTabs').on('click', '.case-tab', function () {
@@ -329,7 +312,70 @@ $(function () {
     /* ---------------- create / edit modal ---------------- */
 
     function openModal() { $('#caseModal').addClass('open').removeAttr('aria-hidden'); $('body').addClass('modal-open'); }
-    function closeModal() { $('#caseModal').removeClass('open').attr('aria-hidden', 'true'); $('body').removeClass('modal-open'); }
+    function closeModal(skipDraft) {
+        if (!skipDraft) saveDraftIfNeeded();
+        $('#caseModal').removeClass('open').attr('aria-hidden', 'true'); $('body').removeClass('modal-open');
+    }
+
+    /* ---------------- draft (new-case only, saved to localStorage on close) ---------------- */
+
+    var DRAFT_KEY = 'fakta_case_draft';
+
+    function loadDraft() {
+        try { var raw = localStorage.getItem(DRAFT_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+    }
+    function clearDraft() {
+        try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+        renderDraftBanner();
+    }
+    function saveDraftIfNeeded() {
+        if (editingId) return; // only draft brand-new, unsaved cases
+        var parties = collectParties();
+        var draft = {
+            basis: $('#caseBasis').val().trim(),
+            value_amount: $('#caseValue').val().trim(),
+            value_currency: $('#caseCurrency').val(),
+            admin_number: $('#caseAdminNumber').val().trim(),
+            official_person: $('#caseOfficialPerson').val().trim(),
+            note: $('#caseInitialNote').val().trim(),
+            parties: parties,
+            assignees: Object.keys(selectedAssignees)
+        };
+        var hasContent = draft.basis || draft.value_amount || draft.admin_number
+            || draft.official_person || draft.note || parties.length || draft.assignees.length;
+        if (!hasContent) { clearDraft(); return; }
+        try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch (e) {}
+        renderDraftBanner();
+    }
+    function renderDraftBanner() {
+        $('#caseDraftBanner').toggle(!!loadDraft());
+    }
+    $('#caseDraftResume').on('click', function () {
+        var d = loadDraft();
+        if (!d) return;
+        resetModal();
+        $('#caseBasis').val(d.basis || '');
+        $('#caseValue').val(d.value_amount || '');
+        $('#caseCurrency').val(d.value_currency || 'ден');
+        $('#caseAdminNumber').val(d.admin_number || '');
+        $('#caseOfficialPerson').val(d.official_person || '');
+        $('#caseInitialNote').val(d.note || '');
+        var cParties = (d.parties || []).filter(function (p) { return p.side === 'client'; });
+        var oParties = (d.parties || []).filter(function (p) { return p.side === 'opponent'; });
+        $('#clientPartyList').html((cParties.length ? cParties : [{}]).map(clientPartyRow).join(''));
+        $('#opponentPartyList').html(oParties.map(opponentPartyRow).join(''));
+        selectedAssignees = {};
+        (d.assignees || []).forEach(function (uid) { selectedAssignees[uid] = true; });
+        renderSelectedAssignees();
+        openModal();
+    });
+    $('#caseDraftDiscard').on('click', function () {
+        confirmDialog({
+            title: 'Отфрли нацрт', message: 'Недовршениот предмет ќе биде избришан. Продолжи?',
+            confirmText: 'Отфрли', cancelText: 'Откажи',
+            onConfirm: clearDraft
+        });
+    });
 
     function clientOptions(selectedId) {
         var o = '<option value="">— избери клиент —</option>';
@@ -351,16 +397,15 @@ $(function () {
 
     function opponentPartyRow(party) {
         party = party || {};
-        var et = party.entity_type === 'company' ? 'company' : 'individual';
-        return '<div class="case-party-row case-party-row--opp" data-side="opponent">'
-            + '<input type="text" class="field party-name" placeholder="Име на странка" value="' + esc(party.name || '') + '">'
-            + '<select class="field party-etype">'
-            +   '<option value="individual"' + (et === 'individual' ? ' selected' : '') + '>Физичко</option>'
-            +   '<option value="company"' + (et === 'company' ? ' selected' : '') + '>Правно</option>'
-            + '</select>'
-            + '<input type="text" class="field party-lawyer" placeholder="Адвокат (опц.)" value="' + esc(party.opposing_lawyer || '') + '">'
-            + '<input type="text" class="field party-role" placeholder="Својство (пр. Тужен)" value="' + esc(party.role || '') + '">'
-            + '<button type="button" class="party-remove" title="Отстрани">&times;</button>'
+        return '<div class="case-party-group" data-side="opponent">'
+            + '<div class="case-party-row case-party-row--opp">'
+            +   '<input type="text" class="field party-name" placeholder="Име на странка" value="' + esc(party.name || '') + '">'
+            +   '<input type="text" class="field party-role" placeholder="Својство (пр. Тужен)" value="' + esc(party.role || '') + '">'
+            +   '<button type="button" class="party-remove" title="Отстрани">&times;</button>'
+            + '</div>'
+            + '<div class="case-party-subrow">'
+            +   '<input type="text" class="field party-representative" placeholder="Застапник на спротивната странка (опц.)" value="' + esc(party.opposing_representative || '') + '">'
+            + '</div>'
             + '</div>';
     }
 
@@ -423,7 +468,8 @@ $(function () {
 
     $('#caseForm').on('click', '.party-remove', function () {
         var $list = $(this).closest('.case-party-list');
-        $(this).closest('.case-party-row').remove();
+        var $group = $(this).closest('.case-party-group');
+        ($group.length ? $group : $(this).closest('.case-party-row')).remove();
         // keep at least one client row present
         if ($list.attr('id') === 'clientPartyList' && !$list.children().length) $list.append(clientPartyRow());
     });
@@ -439,9 +485,8 @@ $(function () {
         $('#caseId').val('');
         $('#caseForm')[0].reset();
         $('#caseCurrency').val('ден');
-        $('#caseStatus').val('in_progress');
         $('#caseAlert').hide();
-        $('#adminNumberRow').show();
+        $('#adminNumberRow, #officialPersonRow, #caseNoteBlock').show();
         selectedAssignees = {};
         $('#clientPartyList').html(clientPartyRow());
         $('#opponentPartyList').html(opponentPartyRow());
@@ -449,12 +494,12 @@ $(function () {
         renderSelectedAssignees();
         $('#caseModalTitle').text('Нов предмет');
         $('#caseModalSub').text('Пополни ги полињата по секции и зачувај');
-        $('#basisSuggest').hide();
+        $('#basisSuggest, #officialSuggest').hide();
         setTimeout(function () { $('#caseBasis').focus(); }, 60);
     }
 
     $('#caseNewBtn').on('click', function () { resetModal(); openModal(); });
-    $('[data-case-close]').on('click', closeModal);
+    $('[data-case-close]').on('click', function () { closeModal(); });
     $('#caseModal').on('click', function (e) { if (e.target === this) closeModal(); });
 
     function openEdit(id) {
@@ -467,8 +512,7 @@ $(function () {
             $('#caseBasis').val(c.basis || '');
             $('#caseValue').val(c.value_amount != null ? String(c.value_amount).replace('.', ',') : '');
             $('#caseCurrency').val(c.value_currency || 'ден');
-            $('#caseStatus').val(c.status || 'in_progress');
-            $('#adminNumberRow').hide(); // admin numbers managed on the detail page when editing
+            $('#adminNumberRow, #officialPersonRow, #caseNoteBlock').hide(); // managed on the detail page when editing
 
             var cParties = (c.parties || []).filter(function (p) { return p.side === 'client'; });
             var oParties = (c.parties || []).filter(function (p) { return p.side === 'opponent'; });
@@ -493,13 +537,12 @@ $(function () {
             if (!cid) return;
             out.push({ side: 'client', client_id: cid, role: $(this).find('.party-role').val().trim() });
         });
-        $('#opponentPartyList .case-party-row').each(function () {
+        $('#opponentPartyList .case-party-group').each(function () {
             var name = $(this).find('.party-name').val().trim();
             if (!name) return;
             out.push({
                 side: 'opponent', name: name,
-                entity_type: $(this).find('.party-etype').val(),
-                opposing_lawyer: $(this).find('.party-lawyer').val().trim(),
+                opposing_representative: $(this).find('.party-representative').val().trim(),
                 role: $(this).find('.party-role').val().trim()
             });
         });
@@ -518,17 +561,21 @@ $(function () {
             basis: $('#caseBasis').val().trim(),
             value_amount: $('#caseValue').val().trim(),
             value_currency: $('#caseCurrency').val(),
-            status: $('#caseStatus').val(),
             parties: JSON.stringify(parties),
             assignees: JSON.stringify(Object.keys(selectedAssignees))
         };
         var action;
         if (editingId) { action = 'update'; data.id = editingId; }
-        else { action = 'create'; data.admin_number = $('#caseAdminNumber').val().trim(); }
+        else {
+            action = 'create';
+            data.admin_number = $('#caseAdminNumber').val().trim();
+            data.official_person = $('#caseOfficialPerson').val().trim();
+            data.note = $('#caseInitialNote').val().trim();
+        }
 
         var $btn = $('#caseSaveBtn').prop('disabled', true).text('Се зачувува...');
         post(action, data).done(function (r) {
-            if (r.success) { closeModal(); toast(r.message, 'success'); state.page = 1; loadList(); }
+            if (r.success) { clearDraft(); closeModal(true); toast(r.message, 'success'); state.page = 1; loadList(); }
             else showAlert(r.message || 'Грешка.');
         }).fail(function () { showAlert('Грешка при комуникација.'); })
           .always(function () { $btn.prop('disabled', false).text('Зачувај'); });
@@ -561,6 +608,31 @@ $(function () {
         $('#basisSuggest').hide();
     });
     $('#caseBasis').on('blur', function () { setTimeout(function () { $('#basisSuggest').hide(); }, 150); });
+
+    /* ---------------- службено лице autocomplete ---------------- */
+
+    var officialTimer = null;
+    $('#caseOfficialPerson').on('input', function () {
+        var q = $(this).val().trim();
+        clearTimeout(officialTimer);
+        if (q.length < 2) { $('#officialSuggest').hide(); return; }
+        officialTimer = setTimeout(function () {
+            $.ajax({ url: API, data: { action: 'suggest_official', q: q }, dataType: 'json' }).done(function (res) {
+                var items = (res.data || []);
+                if (!items.length) { $('#officialSuggest').hide(); return; }
+                $('#officialSuggest').html(items.map(function (it) {
+                    return '<div class="basis-suggest-item" data-val="' + esc(it.official_person) + '">'
+                        + '<span>' + esc(it.official_person) + '</span><span class="basis-suggest-count">' + it.cnt + '×</span></div>';
+                }).join('')).show();
+            });
+        }, 200);
+    });
+    $('#officialSuggest').on('mousedown', '.basis-suggest-item', function (e) {
+        e.preventDefault();
+        $('#caseOfficialPerson').val($(this).data('val'));
+        $('#officialSuggest').hide();
+    });
+    $('#caseOfficialPerson').on('blur', function () { setTimeout(function () { $('#officialSuggest').hide(); }, 150); });
 
     /* ---------------- quick client modal ---------------- */
 
@@ -638,9 +710,9 @@ $(function () {
     // Downloadable template (UTF-8 BOM so Excel shows Cyrillic correctly).
     $('#csvTemplateBtn').on('click', function () {
         var header = ['Основ', 'Вредност', 'Валута', 'Административен број', 'Клиент', 'Својство на клиент',
-            'Спротивна странка', 'Тип на спротивна', 'Својство на спротивна', 'Адвокат на спротивна', 'Доделено на'];
+            'Спротивна странка', 'Својство на спротивна', 'Застапник на спротивна', 'Доделено на'];
         var example = ['Оштета на возило', '15000.50', 'евра', 'П1-123/24', 'Име на постоечки клиент', 'Тужител',
-            'Фирма А', 'правно', 'Тужен', 'адв. Славе', ''];
+            'Фирма А', 'Тужен', 'застап. Славе', ''];
         var csv = '﻿' + header.join(',') + '\n' + example.join(',') + '\n';
         var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         var a = document.createElement('a');
@@ -774,6 +846,7 @@ $(function () {
     });
 
     /* ---------------- init ---------------- */
+    renderDraftBanner();
     $.when(loadMembers(), loadClients()).always(function () {
         // Deep-link: predmet.php "Уреди" sends ?edit=ID — open the edit modal.
         var editId = new URLSearchParams(location.search).get('edit');

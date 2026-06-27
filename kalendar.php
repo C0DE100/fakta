@@ -46,11 +46,10 @@ $members = $mStmt->fetchAll();
         <div class="pt-10 pb-6 flex items-start justify-between gap-4 flex-wrap">
             <div>
                 <h1 class="text-lg font-semibold text-slate-800">Календар</h1>
-                <p class="text-sm text-slate-400 mt-1">Рочишта, судења, состаноци и лични настани</p>
+                <p class="text-sm text-slate-400 mt-1">Рочишта, состаноци и лични настани</p>
             </div>
             <div class="cal-legend">
                 <span class="cal-legend-item"><span class="cal-dot hkind--hearing"></span>Рочиште</span>
-                <span class="cal-legend-item"><span class="cal-dot hkind--trial"></span>Судење</span>
                 <span class="cal-legend-item"><span class="cal-dot hkind--meeting"></span>Состанок</span>
                 <span class="cal-legend-item"><span class="cal-dot hkind--other"></span>Друго</span>
             </div>
@@ -193,6 +192,17 @@ $members = $mStmt->fetchAll();
             $('#calViews .cal-view-btn').removeClass('is-active').filter('[data-view="' + v + '"]').addClass('is-active');
         }
         var cursor = new Date(); cursor.setHours(0, 0, 0, 0);
+        // Deep-link support: predmet.php hearing dates link here as ?date=YYYY-MM-DD&view=day.
+        (function () {
+            var qs = new URLSearchParams(location.search);
+            var qDate = qs.get('date'), qView = qs.get('view');
+            if (qDate && /^\d{4}-\d{2}-\d{2}$/.test(qDate)) {
+                var p = qDate.split('-');
+                cursor = new Date(+p[0], +p[1] - 1, +p[2]); cursor.setHours(0, 0, 0, 0);
+            }
+            if (qView && ['month', 'week', 'day'].indexOf(qView) >= 0) mode = qView;
+            if (qDate || qView) history.replaceState(null, '', 'kalendar.php');
+        }());
         var eventsByDay = {};   // 'YYYY-MM-DD' -> [event,…]
         var eventsById  = {};   // 'source:id'  -> event
 

@@ -4309,6 +4309,15 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
    ПРЕДМЕТИ (cases) — list, grid/list cards, modal, detail
    ================================================ */
 
+/* Resumable "new case" draft banner */
+.case-draft-banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+    background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: 0.7rem;
+    padding: 0.65rem 0.9rem; margin-bottom: 0.75rem; font-size: 0.85rem; color: #44403c;
+}
+.case-draft-banner-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+[data-theme="dark"] .case-draft-banner { color: #ededf0; }
+
 /* Tabs: active / archive */
 .case-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; }
 .case-tab {
@@ -4460,9 +4469,10 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .case-party-row .party-client { flex: 1 1 auto; min-width: 0; }
 .case-party-row .party-role   { flex: 0 0 11rem; }
 .case-party-row--opp .party-name   { flex: 1 1 auto; min-width: 0; }
-.case-party-row--opp .party-etype  { flex: 0 0 6.5rem; }
-.case-party-row--opp .party-lawyer { flex: 1 1 8rem; min-width: 0; }
-.case-party-row--opp .party-role   { flex: 1 1 8rem; min-width: 0; }
+.case-party-row--opp .party-role   { flex: 0 0 11rem; }
+.case-party-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.case-party-subrow { display: flex; gap: 0.4rem; padding-left: 1.6rem; border-left: 2px solid var(--accent-border); margin-left: 0.3rem; }
+.case-party-subrow .party-representative { flex: 1 1 auto; min-width: 0; }
 .party-new-client, .party-remove {
     flex-shrink: 0; width: 2.2rem; height: 2.2rem;
     display: inline-flex; align-items: center; justify-content: center;
@@ -4474,8 +4484,8 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .party-remove:hover { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }
 @media (max-width: 640px) {
     .case-party-row, .case-party-row--opp { flex-wrap: wrap; }
-    .case-party-row .party-role, .case-party-row--opp .party-etype,
-    .case-party-row--opp .party-lawyer, .case-party-row--opp .party-role { flex: 1 1 100%; }
+    .case-party-row .party-role, .case-party-row--opp .party-role { flex: 1 1 100%; }
+    .case-party-subrow { padding-left: 0.8rem; }
 }
 
 /* Assignee chips */
@@ -4539,7 +4549,6 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .case-party-item-name { font-size: 0.9rem; font-weight: 600; color: #1c1917; display: flex; align-items: center; gap: 0.4rem; }
 .case-party-item-meta { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem; flex-wrap: wrap; }
 .case-role-tag { font-size: 0.7rem; font-weight: 600; color: var(--accent); background: var(--accent-soft); border-radius: 0.35rem; padding: 0.1rem 0.45rem; }
-.case-etype-tag { font-size: 0.65rem; font-weight: 600; color: #92600a; background: #f3e8d6; border-radius: 0.35rem; padding: 0.08rem 0.4rem; }
 .case-party-link { font-size: 0.75rem; color: var(--accent); text-decoration: none; }
 .case-party-link:hover { text-decoration: underline; }
 .case-lawyer { font-size: 0.75rem; color: #78716c; }
@@ -4576,6 +4585,7 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 [data-theme="dark"] .view-toggle-btn.is-active { background: #ededf0; color: #16161a; }
 [data-theme="dark"] .case-card          { background: #212125; border-color: #3c3c44; box-shadow: 0 1px 2px rgba(0,0,0,0.35); }
 [data-theme="dark"] .case-card:hover    { border-color: #505059; }
+[data-theme="dark"] .case-card-num      { background: #2a2a30; }
 [data-theme="dark"] .case-pname,
 [data-theme="dark"] .case-row-parties strong,
 [data-theme="dark"] .case-fact-value,
@@ -4862,8 +4872,16 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 
 /* ---- Grid card: every value gets a label ---- */
 .case-card { gap: 0.5rem; }
-.case-card-num { display: flex; flex-direction: column; gap: 0.15rem; }
+/* Dark header band, aligned with the client profile header (.profile-card-head). */
+.case-card-num {
+    display: flex; flex-direction: column; gap: 0.15rem;
+    margin: -1rem -1.1rem 0; padding: 0.8rem 1.1rem;
+    background: #243447; border-radius: 0.875rem 0.875rem 0 0;
+}
 .case-card-num-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.case-card-num .case-num { color: #ffffff; }
+.case-card-num .case-badge--active { background: rgba(255, 255, 255, 0.16); color: #d7f5e3; }
+.case-card-num .case-badge--archived { background: rgba(255, 255, 255, 0.16); color: #f3e8d6; }
 .case-num { font-size: 1.2rem; font-weight: 800; color: var(--accent); letter-spacing: 0.01em; }
 
 .case-fld { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
@@ -4891,7 +4909,7 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 /* ---- List view: labelled column header + aligned rows ---- */
 .case-list {
     display: flex; flex-direction: column; padding: 0.25rem 0 0.5rem;
-    --case-cols: 9rem minmax(11rem, 1.8fr) minmax(9rem, 1.6fr) 7.5rem 7rem 5.5rem 4.5rem;
+    --case-cols: 9rem minmax(13rem, 2.2fr) minmax(9rem, 1.6fr) 7.5rem 7rem 3.6rem 4.5rem;
 }
 .case-list-head {
     display: grid; grid-template-columns: var(--case-cols); gap: 1rem;
@@ -4906,9 +4924,11 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .case-cell { min-width: 0; font-size: 0.82rem; color: #44403c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .case-cell-num { display: flex; align-items: center; gap: 0.4rem; }
 .case-num-sm { font-weight: 800; color: var(--accent); font-size: 0.92rem; }
+.case-cell-parties { display: flex; flex-direction: column; gap: 0.15rem; white-space: normal; overflow: visible; }
 .case-cell-parties strong { font-weight: 600; color: #1c1917; }
-.case-row-vs { color: #c4bdb2; font-style: italic; margin: 0 0.35rem; }
+.case-party-stack-line { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .case-cell-value { font-weight: 600; }
+
 .case-cell-assignees { display: flex; white-space: normal; overflow: visible; }
 .case-cell-actions { display: flex; justify-content: flex-end; overflow: visible; }
 .case-row-actions-inner { display: flex; gap: 0.25rem; opacity: 0; transition: opacity 0.15s; }
@@ -5019,6 +5039,12 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 
 /* Inputs sit on the tinted card → keep them crisp white */
 .case-block .field { background: #ffffff; }
+
+/* Compact variant — used for "Додели предмет на" so it doesn't dominate the modal */
+.case-block--compact { padding: 0.7rem 1.2rem; }
+.case-block--compact .case-block-head { margin-bottom: 0.5rem; }
+.case-block--compact .case-block-title { font-size: 0.86rem; }
+.assignee-picker--compact .assignee-input-wrap .field { padding-top: 0.45rem; padding-bottom: 0.45rem; }
 
 /* Dark mode */
 [data-theme="dark"] .case-block { background: #26262c; border-color: #34343c; }
@@ -5242,51 +5268,6 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 [data-theme="dark"] .note.is-pinned { background: #1a212b; }
 
 /* ================================================
-   Case phase/status badges
-   ================================================ */
-.cstat--in_progress { background: #eff6ff; color: #1d4ed8; }
-.cstat--on_hold     { background: #f0efed; color: #78716c; }
-.cstat--appeal      { background: #fdf6e3; color: #92600a; }
-.cstat--won         { background: #ecfdf5; color: #047857; }
-.cstat--lost        { background: #fef2f2; color: #b91c1c; }
-.cstat--closed      { background: #e6e8eb; color: #475569; }
-
-[data-theme="dark"] .cstat--in_progress { background: #1e2a52; color: #93c5fd; }
-[data-theme="dark"] .cstat--on_hold     { background: #2b2b31; color: #9898a6; }
-[data-theme="dark"] .cstat--appeal      { background: #2e2410; color: #e0b252; }
-[data-theme="dark"] .cstat--won         { background: #0f2a1f; color: #4ade80; }
-[data-theme="dark"] .cstat--lost        { background: #3a1a1a; color: #f87171; }
-[data-theme="dark"] .cstat--closed      { background: #2b3038; color: #94a3b8; }
-
-/* Detail-page quick phase changer */
-.case-phase-control { position: relative; display: inline-block; }
-.case-phase-pill {
-    display: inline-flex; align-items: center; gap: 0.3rem;
-    font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
-    border: none; border-radius: 0.35rem; padding: 0.18rem 0.5rem; cursor: pointer;
-}
-.case-phase-pill svg { opacity: 0.7; }
-.case-phase-menu {
-    position: absolute; top: 100%; left: 0; z-index: 40; margin-top: 0.3rem; min-width: 9rem;
-    background: #fff; border: 1px solid #d9d2c7; border-radius: 0.55rem;
-    box-shadow: 0 8px 24px rgba(28, 25, 23, 0.14); padding: 0.25rem;
-}
-.case-phase-opt {
-    display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left;
-    font-size: 0.82rem; color: #1c1917; background: none; border: none; cursor: pointer;
-    padding: 0.4rem 0.5rem; border-radius: 0.4rem;
-}
-.case-phase-opt:hover { background: #f5f1ea; }
-.case-phase-opt.is-current { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.case-phase-opt .tdot { width: 0.55rem; height: 0.55rem; border-radius: 9999px; }
-.pdot--in_progress { background: #2563eb; } .pdot--on_hold { background: #a8a29e; }
-.pdot--appeal { background: #d4a017; } .pdot--won { background: #16a34a; }
-.pdot--lost { background: #dc2626; } .pdot--closed { background: #64748b; }
-[data-theme="dark"] .case-phase-menu { background: #212125; border-color: #3c3c44; }
-[data-theme="dark"] .case-phase-opt { color: #ededf0; }
-[data-theme="dark"] .case-phase-opt:hover { background: #2b2b31; }
-
-/* ================================================
    Рочишта (hearings) — detail panel + card surfacing
    ================================================ */
 .hearing-compose { margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
@@ -5303,7 +5284,9 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .hearing-date {
     flex-shrink: 0; width: 3rem; height: 3rem; border-radius: 0.6rem;
     background: #f5f1ea; border: 1px solid #ece6dd; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-decoration: none; cursor: pointer; transition: border-color 0.12s, background-color 0.12s;
 }
+.hearing-date:hover { border-color: var(--accent-border); background: var(--accent-soft); }
 .hearing.is-next .hearing-date { background: var(--accent-soft); border-color: var(--accent-border); }
 .hearing-day { font-size: 1.05rem; font-weight: 800; color: #1c1917; line-height: 1; }
 .hearing.is-next .hearing-day { color: var(--accent); }

@@ -36,7 +36,7 @@ function safe(PDO $pdo, string $sql): void
         $pdo->exec($sql);
     } catch (PDOException $e) {
         $msg = strtolower($e->getMessage());
-        foreach (['duplicate column', 'duplicate key', 'already exists', 'check that column', 'duplicate index', "can't drop"] as $needle) {
+        foreach (['duplicate column', 'duplicate key', 'already exists', 'check that column', 'duplicate index', "can't drop", 'unknown column'] as $needle) {
             if (str_contains($msg, $needle)) {
                 return;
             }
@@ -231,7 +231,6 @@ CREATE TABLE IF NOT EXISTS cases (
     basis          VARCHAR(255) NULL,                           -- основ (title of the case)
     value_amount   DECIMAL(15,2) NULL,                          -- вредност
     value_currency ENUM('ден','евра') NOT NULL DEFAULT 'ден',
-    status         VARCHAR(20) NOT NULL DEFAULT 'in_progress',  -- lifecycle phase
     search_text    TEXT NULL,                                   -- denormalized blob for LIKE search
     created_by     INT UNSIGNED NULL,
     created_at     DATETIME NOT NULL DEFAULT current_timestamp(),
@@ -243,30 +242,36 @@ CREATE TABLE IF NOT EXISTS cases (
     UNIQUE KEY uq_case_archive (company_id, archive_seq),
     KEY idx_cases_list       (company_id, deleted_at, archived_at, id),
     KEY idx_cases_basis      (company_id, basis),
-    KEY idx_cases_created_by (company_id, created_by),
-    KEY idx_cases_status     (company_id, status)
+    KEY idx_cases_created_by (company_id, created_by)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
+// Upgrade path: case lifecycle phase collapsed into the existing archived_at flag.
+safe($pdo, "ALTER TABLE cases DROP KEY idx_cases_status");
+safe($pdo, "ALTER TABLE cases DROP COLUMN status");
 
 safe($pdo, "
 CREATE TABLE IF NOT EXISTS case_parties (
-    id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    company_id      INT UNSIGNED NOT NULL,
-    case_id         INT UNSIGNED NOT NULL,
-    side            ENUM('client','opponent') NOT NULL,
-    client_id       INT UNSIGNED NULL,                          -- set when side='client' (FK → clients.id)
-    name            VARCHAR(255) NULL,                          -- opponent name (case-specific, not a client)
-    entity_type     ENUM('individual','company') NULL,         -- opponent: физичко / правно лице
-    opposing_lawyer VARCHAR(255) NULL,                          -- адвокат на спротивната странка
-    role            VARCHAR(120) NOT NULL,                      -- својство во предметот (freetext)
-    is_primary      TINYINT(1) NOT NULL DEFAULT 0,              -- the party shown on the grid card
-    created_at      DATETIME NOT NULL DEFAULT current_timestamp(),
+    id                      INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    company_id              INT UNSIGNED NOT NULL,
+    case_id                 INT UNSIGNED NOT NULL,
+    side                    ENUM('client','opponent') NOT NULL,
+    client_id               INT UNSIGNED NULL,                  -- set when side='client' (FK → clients.id)
+    name                    VARCHAR(255) NULL,                  -- opponent name (case-specific, not a client)
+    opposing_representative VARCHAR(255) NULL,                  -- застапник на спротивната странка
+    role                    VARCHAR(120) NOT NULL,              -- својство во предметот (freetext)
+    is_primary              TINYINT(1) NOT NULL DEFAULT 0,      -- the party shown on the grid card
+    created_at              DATETIME NOT NULL DEFAULT current_timestamp(),
+    deleted_at              DATETIME NULL,
     PRIMARY KEY (id),
     KEY idx_cp_case    (case_id, side),
     KEY idx_cp_client  (company_id, client_id),
     KEY idx_cp_company (company_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
+// Upgrade path: dropped the opponent entity-type selector; адвокат → застапник.
+safe($pdo, "ALTER TABLE case_parties DROP COLUMN entity_type");
+safe($pdo, "ALTER TABLE case_parties CHANGE COLUMN opposing_lawyer opposing_representative VARCHAR(255) NULL");
+safe($pdo, "ALTER TABLE case_parties ADD COLUMN deleted_at DATETIME NULL");
 
 safe($pdo, "
 CREATE TABLE IF NOT EXISTS case_assignees (
@@ -274,25 +279,31 @@ CREATE TABLE IF NOT EXISTS case_assignees (
     case_id     INT UNSIGNED NOT NULL,
     user_id     INT UNSIGNED NOT NULL,
     assigned_at DATETIME NOT NULL DEFAULT current_timestamp(),
+    deleted_at  DATETIME NULL,
     PRIMARY KEY (case_id, user_id),
     KEY idx_ca_user (company_id, user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
+safe($pdo, "ALTER TABLE case_assignees ADD COLUMN deleted_at DATETIME NULL");
 
 safe($pdo, "
 CREATE TABLE IF NOT EXISTS case_admin_numbers (
-    id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    company_id   INT UNSIGNED NOT NULL,
-    case_id      INT UNSIGNED NOT NULL,
-    admin_number VARCHAR(190) NOT NULL,                         -- административен број (official institution no.)
-    is_current   TINYINT(1) NOT NULL DEFAULT 1,
-    note         VARCHAR(255) NULL,                             -- optional: phase / institution
-    created_at   DATETIME NOT NULL DEFAULT current_timestamp(),
+    id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    company_id      INT UNSIGNED NOT NULL,
+    case_id         INT UNSIGNED NOT NULL,
+    admin_number    VARCHAR(190) NOT NULL,                      -- административен број (official institution no.)
+    is_current      TINYINT(1) NOT NULL DEFAULT 1,
+    official_person VARCHAR(255) NULL,                          -- службено лице (судија/нотар/извршител/службеник)
+    created_at      DATETIME NOT NULL DEFAULT current_timestamp(),
+    deleted_at      DATETIME NULL,
     PRIMARY KEY (id),
     KEY idx_can_case    (case_id, is_current),
     KEY idx_can_company (company_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
+// Upgrade path: the admin-number note is now used for службено лице.
+safe($pdo, "ALTER TABLE case_admin_numbers CHANGE COLUMN note official_person VARCHAR(255) NULL");
+safe($pdo, "ALTER TABLE case_admin_numbers ADD COLUMN deleted_at DATETIME NULL");
 
 safe($pdo, "
 CREATE TABLE IF NOT EXISTS case_counters (
@@ -314,12 +325,14 @@ CREATE TABLE IF NOT EXISTS case_notes (
     is_pinned  TINYINT(1) NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT current_timestamp(),
     updated_at DATETIME NULL ON UPDATE current_timestamp(),
+    deleted_at DATETIME NULL,
     PRIMARY KEY (id),
     KEY idx_cn_case    (case_id, created_at),
     KEY idx_cn_company (company_id),
     KEY idx_cn_pinned  (case_id, is_pinned)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
+safe($pdo, "ALTER TABLE case_notes ADD COLUMN deleted_at DATETIME NULL");
 
 safe($pdo, "
 CREATE TABLE IF NOT EXISTS case_todos (
@@ -334,6 +347,7 @@ CREATE TABLE IF NOT EXISTS case_todos (
     created_by   INT UNSIGNED NULL,
     created_at   DATETIME NOT NULL DEFAULT current_timestamp(),
     completed_at DATETIME NULL,
+    deleted_at   DATETIME NULL,
     PRIMARY KEY (id),
     KEY idx_ct_case     (case_id, is_done),
     KEY idx_ct_company  (company_id),
@@ -341,6 +355,7 @@ CREATE TABLE IF NOT EXISTS case_todos (
     KEY idx_ct_status   (case_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
+safe($pdo, "ALTER TABLE case_todos ADD COLUMN deleted_at DATETIME NULL");
 
 // Calendar events on a case: рочишта, судења и состаноци (see `kind`).
 safe($pdo, "
@@ -355,6 +370,7 @@ CREATE TABLE IF NOT EXISTS case_hearings (
     note       TEXT NULL,
     created_by INT UNSIGNED NULL,
     created_at DATETIME NOT NULL DEFAULT current_timestamp(),
+    deleted_at DATETIME NULL,
     PRIMARY KEY (id),
     KEY idx_ch_case    (case_id, hearing_at),
     KEY idx_ch_company (company_id, hearing_at)
@@ -362,6 +378,7 @@ CREATE TABLE IF NOT EXISTS case_hearings (
 ");
 // Upgrade path for databases created before the calendar (kind column).
 safe($pdo, "ALTER TABLE case_hearings ADD COLUMN kind ENUM('hearing','trial','meeting') NOT NULL DEFAULT 'hearing' AFTER case_id");
+safe($pdo, "ALTER TABLE case_hearings ADD COLUMN deleted_at DATETIME NULL");
 
 // Personal calendar events (NOT tied to a case): client meetings, reminders,
 // anything the user names. Owned by user_id; only the owner manages them.
@@ -393,11 +410,13 @@ CREATE TABLE IF NOT EXISTS case_files (
     size_bytes  INT UNSIGNED NULL,
     uploaded_by INT UNSIGNED NULL,
     created_at  DATETIME NOT NULL DEFAULT current_timestamp(),
+    deleted_at  DATETIME NULL,
     PRIMARY KEY (id),
     KEY idx_cf_case    (case_id),
     KEY idx_cf_company (company_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
+safe($pdo, "ALTER TABLE case_files ADD COLUMN deleted_at DATETIME NULL");
 
 /* ============================================================ Audit */
 

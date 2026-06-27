@@ -23,15 +23,6 @@ function case_money(?string $amount, ?string $currency): string
     return number_format((float) $amount, 2, ',', '.') . ' ' . ($currency ?: 'ден');
 }
 
-/** Macedonian label for a case lifecycle phase. */
-function case_phase_label(?string $s): string
-{
-    return [
-        'in_progress' => 'Во тек', 'on_hold' => 'Мирување', 'appeal' => 'Жалба',
-        'won' => 'Добиен', 'lost' => 'Изгубен', 'closed' => 'Затворен',
-    ][$s] ?? 'Во тек';
-}
-
 $members = [];
 if ($case) {
     $clientParties   = array_filter($case['parties'], fn($p) => $p['side'] === 'client');
@@ -88,26 +79,10 @@ if ($case) {
                 <div class="case-detail-hero-main">
                     <div class="case-detail-numwrap">
                         <span class="case-detail-numbadge"><?= htmlspecialchars($case['case_number']) ?></span>
-                        <?php $phase = $case['status'] ?? 'in_progress'; ?>
-                        <?php if ($canManage): ?>
-                        <div class="case-phase-control" id="casePhaseControl">
-                            <button type="button" class="case-phase-pill cstat--<?= htmlspecialchars($phase) ?>" id="casePhaseBtn">
-                                <?= htmlspecialchars(case_phase_label($phase)) ?>
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                            </button>
-                            <div class="case-phase-menu" id="casePhaseMenu" hidden>
-                                <?php foreach (['in_progress', 'on_hold', 'appeal', 'won', 'lost', 'closed'] as $ph): ?>
-                                    <button type="button" class="case-phase-opt<?= $ph === $phase ? ' is-current' : '' ?>" data-status="<?= $ph ?>">
-                                        <span class="tdot pdot--<?= $ph ?>"></span><?= htmlspecialchars(case_phase_label($ph)) ?>
-                                    </button>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                        <?php else: ?>
-                            <span class="case-badge cstat--<?= htmlspecialchars($phase) ?>"><?= htmlspecialchars(case_phase_label($phase)) ?></span>
-                        <?php endif; ?>
                         <?php if (!empty($case['archived_at'])): ?>
                             <span class="case-badge case-badge--archived">Архивиран</span>
+                        <?php else: ?>
+                            <span class="case-badge case-badge--active">Активен</span>
                         <?php endif; ?>
                     </div>
                     <h1 class="case-detail-basis"><?= htmlspecialchars($case['basis'] ?? '—') ?></h1>
@@ -157,17 +132,13 @@ if ($case) {
                     <span class="case-fact-label">Административен број</span>
                     <span class="case-fact-value"><?= $currentAdmin ? htmlspecialchars($currentAdmin) : '—' ?></span>
                 </div>
-                <div class="case-fact">
-                    <span class="case-fact-label">Странки</span>
-                    <span class="case-fact-value"><?= count($clientParties) ?> · <?= count($opponentParties) ?></span>
-                </div>
             </div>
 
             <!-- Parties -->
             <div class="case-detail-cols">
                 <div class="case-panel">
                     <div class="case-panel-head">
-                        <h2 class="case-panel-title">Наши странки</h2>
+                        <h2 class="case-panel-title">Наша странка</h2>
                         <span class="case-panel-badge case-panel-badge--client"><?= count($clientParties) ?></span>
                     </div>
                     <?php foreach ($clientParties as $p):
@@ -177,7 +148,7 @@ if ($case) {
                             <div class="party-card-info">
                                 <div class="party-card-name"><?= htmlspecialchars($p['name'] ?? '—') ?></div>
                                 <div class="party-card-meta">
-                                    <span class="case-role-tag"><?= htmlspecialchars($p['role']) ?></span>
+                                    <?php if (!empty($p['role'])): ?><span class="case-role-tag"><?= htmlspecialchars($p['role']) ?></span><?php endif; ?>
                                     <?php if (!empty($p['client_id'])): ?>
                                         <a class="case-party-link" href="klient.php?id=<?= (int) $p['client_id'] ?>">Профил →</a>
                                     <?php endif; ?>
@@ -190,7 +161,7 @@ if ($case) {
 
                 <div class="case-panel">
                     <div class="case-panel-head">
-                        <h2 class="case-panel-title">Спротивни странки</h2>
+                        <h2 class="case-panel-title">Спротивна странка</h2>
                         <span class="case-panel-badge case-panel-badge--opp"><?= count($opponentParties) ?></span>
                     </div>
                     <?php foreach ($opponentParties as $p):
@@ -200,21 +171,20 @@ if ($case) {
                             <div class="party-card-info">
                                 <div class="party-card-name">
                                     <?= htmlspecialchars($p['name'] ?? '—') ?>
-                                    <span class="case-etype-tag"><?= $p['entity_type'] === 'company' ? 'Правно' : 'Физичко' ?></span>
                                 </div>
                                 <div class="party-card-meta">
-                                    <span class="case-role-tag"><?= htmlspecialchars($p['role']) ?></span>
-                                    <?php if (!empty($p['opposing_lawyer'])): ?>
+                                    <?php if (!empty($p['role'])): ?><span class="case-role-tag"><?= htmlspecialchars($p['role']) ?></span><?php endif; ?>
+                                    <?php if (!empty($p['opposing_representative'])): ?>
                                         <span class="case-lawyer">
                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11l2-7H6l2 7"/><path d="M12 4v16"/><path d="M8 20h8"/></svg>
-                                            адв. <?= htmlspecialchars($p['opposing_lawyer']) ?>
+                                            застап. <?= htmlspecialchars($p['opposing_representative']) ?>
                                         </span>
                                     <?php endif; ?>
                                 </div>
                             </div>
                         </div>
                     <?php endforeach; ?>
-                    <?php if (!$opponentParties): ?><p class="case-empty">Нема спротивни странки.</p><?php endif; ?>
+                    <?php if (!$opponentParties): ?><p class="case-empty">Нема спротивна странка.</p><?php endif; ?>
                 </div>
             </div>
 
@@ -242,17 +212,17 @@ if ($case) {
             <!-- Admin number history -->
             <div class="case-panel">
                 <div class="case-panel-head">
-                    <h2 class="case-panel-title">Историја на административни броеви</h2>
+                    <h2 class="case-panel-title">Административни броеви</h2>
                 </div>
                 <div id="adminHistory" class="case-admin-history">
                     <?php foreach ($case['admin_numbers'] as $an): ?>
                         <div class="case-admin-item<?= (int) $an['is_current'] === 1 ? ' is-current' : '' ?>"
                              data-id="<?= (int) $an['id'] ?>"
                              data-number="<?= htmlspecialchars($an['admin_number'], ENT_QUOTES) ?>"
-                             data-note="<?= htmlspecialchars($an['note'] ?? '', ENT_QUOTES) ?>">
+                             data-official="<?= htmlspecialchars($an['official_person'] ?? '', ENT_QUOTES) ?>">
                             <span class="case-admin-dot"></span>
                             <span class="case-admin-num"><?= htmlspecialchars($an['admin_number']) ?></span>
-                            <?php if (!empty($an['note'])): ?><span class="case-admin-note"><?= htmlspecialchars($an['note']) ?></span><?php endif; ?>
+                            <?php if (!empty($an['official_person'])): ?><span class="case-admin-note"><?= htmlspecialchars($an['official_person']) ?></span><?php endif; ?>
                             <?php if ((int) $an['is_current'] === 1): ?><span class="case-admin-current">тековен</span><?php endif; ?>
                             <span class="case-admin-date"><?= !empty($an['created_at']) ? date('d.m.Y', strtotime($an['created_at'])) : '' ?></span>
                             <?php if ($canManage): ?>
@@ -269,10 +239,13 @@ if ($case) {
                 <?php if ($canManage): ?>
                 <form id="adminNumberForm" class="case-admin-add">
                     <input type="text" class="field" id="newAdminNumber" placeholder="Нов административен број" style="flex:2 1 12rem">
-                    <input type="text" class="field" id="newAdminNote" placeholder="Белешка — пр. фаза/институција (опц.)" style="flex:2 1 12rem">
+                    <div style="position:relative; flex:2 1 12rem">
+                        <input type="text" class="field" id="newAdminOfficial" placeholder="Овластено лице (службеник) (опц.)" style="width:100%">
+                        <div id="newAdminOfficialSuggest" class="basis-suggest" style="display:none"></div>
+                    </div>
                     <button type="submit" class="btn-modal-save">Додај</button>
                 </form>
-                <p class="case-admin-hint">Новиот број станува тековен; претходните остануваат во историјата.</p>
+                <p class="case-admin-hint">Новиот број станува тековен.</p>
                 <?php endif; ?>
             </div>
 
@@ -361,7 +334,6 @@ if ($case) {
                         <div class="hearing-compose">
                             <div class="hkind-chips" id="hearingKindChips">
                                 <button type="button" class="hkind-chip hkind--hearing is-active" data-kind="hearing">Рочиште</button>
-                                <button type="button" class="hkind-chip hkind--trial" data-kind="trial">Судење</button>
                                 <button type="button" class="hkind-chip hkind--meeting" data-kind="meeting">Состанок</button>
                             </div>
                             <input type="text" id="hearingTitle" class="field hearing-title-input" placeholder="Наслов — пр. Главна расправа, Подготвително рочиште…">
@@ -418,32 +390,40 @@ if ($case) {
             });
         });
 
-        // Quick phase changer
-        $('#casePhaseBtn').on('click', function (e) {
-            e.stopPropagation();
-            var $m = $('#casePhaseMenu');
-            $m.prop('hidden', !$m.prop('hidden'));
-        });
-        $(document).on('click', function () { $('#casePhaseMenu').prop('hidden', true); });
-        $('#casePhaseMenu').on('click', '.case-phase-opt', function (e) {
-            e.stopPropagation();
-            $.post(API, { action: 'set_status', id: caseId, status: $(this).data('status') }, null, 'json')
-                .done(function (r) {
-                    if (r.success) { toast(r.message, 'success'); setTimeout(function () { location.reload(); }, 300); }
-                    else toast(r.message || 'Грешка.', 'error');
-                });
-        });
-
         $('#adminNumberForm').on('submit', function (e) {
             e.preventDefault();
             var num = $('#newAdminNumber').val().trim();
             if (!num) { toast('Внеси број.', 'error'); return; }
-            $.post(API, { action: 'add_admin_number', id: caseId, admin_number: num, note: $('#newAdminNote').val().trim() }, null, 'json')
+            $.post(API, { action: 'add_admin_number', id: caseId, admin_number: num, official_person: $('#newAdminOfficial').val().trim() }, null, 'json')
                 .done(function (r) {
                     if (r.success) { toast(r.message, 'success'); setTimeout(function () { location.reload(); }, 400); }
                     else toast(r.message || 'Грешка.', 'error');
                 });
         });
+
+        // Овластено лице autocomplete (new admin-number row).
+        var officialTimer = null;
+        $('#newAdminOfficial').on('input', function () {
+            var q = $(this).val().trim();
+            clearTimeout(officialTimer);
+            if (q.length < 2) { $('#newAdminOfficialSuggest').hide(); return; }
+            officialTimer = setTimeout(function () {
+                $.ajax({ url: API, data: { action: 'suggest_official', q: q }, dataType: 'json' }).done(function (res) {
+                    var items = (res.data || []);
+                    if (!items.length) { $('#newAdminOfficialSuggest').hide(); return; }
+                    $('#newAdminOfficialSuggest').html(items.map(function (it) {
+                        return '<div class="basis-suggest-item" data-val="' + escAttr(it.official_person) + '">'
+                            + '<span>' + escAttr(it.official_person) + '</span><span class="basis-suggest-count">' + it.cnt + '×</span></div>';
+                    }).join('')).show();
+                });
+            }, 200);
+        });
+        $('#newAdminOfficialSuggest').on('mousedown', '.basis-suggest-item', function (e) {
+            e.preventDefault();
+            $('#newAdminOfficial').val($(this).data('val'));
+            $('#newAdminOfficialSuggest').hide();
+        });
+        $('#newAdminOfficial').on('blur', function () { setTimeout(function () { $('#newAdminOfficialSuggest').hide(); }, 150); });
 
         // ---- Edit / delete a single админ. број ----
         function escAttr(s) { var d = document.createElement('div'); d.appendChild(document.createTextNode(s == null ? '' : s)); return d.innerHTML; }
@@ -453,10 +433,10 @@ if ($case) {
             if ($item.hasClass('editing')) return;
             var id = $item.attr('data-id');
             var num = $item.attr('data-number') || '';
-            var note = $item.attr('data-note') || '';
+            var official = $item.attr('data-official') || '';
             $item.addClass('editing').html(
                 '<input type="text" class="field admin-edit-num" value="' + escAttr(num) + '" placeholder="Административен број">' +
-                '<input type="text" class="field admin-edit-note" value="' + escAttr(note) + '" placeholder="Белешка (опц.)">' +
+                '<input type="text" class="field admin-edit-official" value="' + escAttr(official) + '" placeholder="Овластено лице (службеник) (опц.)">' +
                 '<button type="button" class="btn-modal-save admin-save" data-id="' + id + '">Зачувај</button>' +
                 '<button type="button" class="btn-modal-cancel admin-cancel">Откажи</button>'
             );
@@ -471,7 +451,7 @@ if ($case) {
             if (!num) { toast('Внеси број.', 'error'); return; }
             $.post(API, {
                 action: 'update_admin_number', id: caseId, admin_id: $(this).data('id'),
-                admin_number: num, note: $item.find('.admin-edit-note').val().trim()
+                admin_number: num, official_person: $item.find('.admin-edit-official').val().trim()
             }, null, 'json').done(function (r) {
                 if (r.success) { toast(r.message, 'success'); setTimeout(function () { location.reload(); }, 350); }
                 else toast(r.message || 'Грешка.', 'error');
@@ -893,8 +873,10 @@ if ($case) {
                 + '<button class="hearing-edit" title="Уреди"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>'
                 + '<button class="hearing-del" title="Избриши"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
                 + '</span>' : '';
+            var dateStr = String(h.hearing_at).slice(0, 10);
             return '<div class="hearing hearing--' + k + (isNext ? ' is-next' : '') + '" data-id="' + h.id + '" data-kind="' + k + '">'
-                + '<div class="hearing-date"><span class="hearing-day">' + day + '</span><span class="hearing-mon">' + mon + '</span></div>'
+                + '<a class="hearing-date" href="kalendar.php?date=' + dateStr + '&view=day" title="Отвори во календарот">'
+                +   '<span class="hearing-day">' + day + '</span><span class="hearing-mon">' + mon + '</span></a>'
                 + '<div class="hearing-main">'
                 +   '<div class="hearing-title">' + badge + esc(h.title) + (isNext ? '<span class="hearing-next-tag">следно</span>' : '') + '</div>'
                 +   '<div class="hearing-meta">'
@@ -959,7 +941,7 @@ if ($case) {
             if (!h) return;
             $h.addClass('editing');
             var ek = kindOf(h);
-            var chips = ['hearing', 'trial', 'meeting'].map(function (kk) {
+            var chips = ['hearing', 'meeting'].map(function (kk) {
                 return '<button type="button" class="hkind-chip hkind--' + kk + (kk === ek ? ' is-active' : '') + '" data-kind="' + kk + '">' + HKIND[kk] + '</button>';
             }).join('');
             $h.html(
