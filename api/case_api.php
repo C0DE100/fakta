@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../classes/CaseFile.php';
 require_once __DIR__ . '/../classes/CaseImporter.php';
 require_once __DIR__ . '/../classes/CalendarEvent.php';
+require_once __DIR__ . '/../classes/Notification.php';
 
 require_login();
 
@@ -13,12 +14,13 @@ header('Content-Type: application/json; charset=utf-8');
 $db        = $GLOBALS['fakta_db'];
 $cases     = new CaseFile($db);
 $calendar  = new CalendarEvent($db);
+$notify    = new Notification($db);
 $companyId = current_company_id();
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
 // Praktikant may create and view, but not modify/archive/delete (mirrors clients).
-$restricted = ['update', 'archive', 'unarchive', 'delete', 'restore', 'force_delete', 'add_admin_number', 'update_admin_number', 'delete_admin_number'];
+$restricted = ['update', 'archive', 'unarchive', 'delete', 'restore', 'force_delete', 'add_admin_number', 'update_admin_number', 'delete_admin_number', 'add_assignee', 'remove_assignee'];
 if (current_role() === 'praktikant' && in_array($action, $restricted, true)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Немате дозвола за оваа акција.']);
@@ -41,6 +43,23 @@ function format_conflict(array $row, string $startKey, string $endKey): string
         $range = date('d.m.Y', $start) . ' ' . $range;
     }
     return "„{$row['title']}“ ({$range})";
+}
+
+/**
+ * Reduce a list of requested user ids to the case's actual assignees, returned
+ * as [id => name] (preserving names for conflict messages). Empty if none valid.
+ */
+function resolve_event_assignees(CaseFile $cases, int $companyId, int $caseId, array $requestedIds): array
+{
+    $requested = array_flip(array_map('intval', $requestedIds));
+    $selected  = [];
+    foreach ($cases->getAssigneeUsers($companyId, $caseId) as $u) {
+        $uid = (int) $u['id'];
+        if (isset($requested[$uid])) {
+            $selected[$uid] = $u['name'];
+        }
+    }
+    return $selected;
 }
 
 /** Decode a JSON array sent as a POST field; always returns an array. */
@@ -124,6 +143,32 @@ try {
 
             fakta_audit('case.update', 'case', $id, $cases->caseLabel($companyId, $id));
             echo json_encode(['success' => true, 'message' => 'Предметот е успешно ажуриран.']);
+            break;
+        }
+
+        case 'add_assignee': {
+            $id  = (int) ($_POST['id'] ?? 0);
+            $uid = (int) ($_POST['user_id'] ?? 0);
+            if ($id <= 0 || $uid <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Невалидни податоци.']);
+                exit;
+            }
+            $ok = $cases->addAssignee($companyId, $id, $uid);
+            if ($ok) fakta_audit('case.assignee_add', 'case', $id, $cases->caseLabel($companyId, $id));
+            echo json_encode(['success' => $ok, 'message' => $ok ? 'Предметот е доделен.' : 'Не може да се додели.']);
+            break;
+        }
+
+        case 'remove_assignee': {
+            $id  = (int) ($_POST['id'] ?? 0);
+            $uid = (int) ($_POST['user_id'] ?? 0);
+            if ($id <= 0 || $uid <= 0) {
+                echo json_encode(['success' => false, 'message' => 'Невалидни податоци.']);
+                exit;
+            }
+            $ok = $cases->removeAssignee($companyId, $id, $uid);
+            if ($ok) fakta_audit('case.assignee_remove', 'case', $id, $cases->caseLabel($companyId, $id));
+            echo json_encode(['success' => $ok, 'message' => $ok ? 'Доделувањето е отстрането.' : 'Не може да се отстрани.']);
             break;
         }
 
@@ -373,6 +418,12 @@ try {
             $fid = (int) ($_POST['file_id'] ?? 0);
             if ($fid <= 0) { echo json_encode(['success' => false, 'message' => 'Невалиден ID.']); exit; }
             $f = $cases->getFile($companyId, $fid);
+            // Praktikant may only delete documents they uploaded themselves.
+            if ($f && current_role() === 'praktikant' && (int) ($f['uploaded_by'] ?? 0) !== (int) (current_user()['id'] ?? 0)) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => 'Можете да бришете само документи што сте ги прикачиле вие.']);
+                exit;
+            }
             $ok = $f && $cases->deleteFile($companyId, $fid);
             if ($ok && !empty($f['stored_rel'])) {
                 @unlink(UPLOADS_DIR . '/' . $f['stored_rel']);
@@ -413,6 +464,42 @@ try {
             }
             usort($events, fn($a, $b) => strcmp($a['start'], $b['start']));
             echo json_encode(['success' => true, 'data' => $events]);
+            break;
+        }
+
+        case 'dashboard': {
+            // Home dashboard feed: upcoming events (case рочишта + personal) from
+            // now forward, plus all open to-dos across active cases. Both carry the
+            // case label so the UI can group "под кој предмет" they belong to.
+            $uid   = (int) (current_user()['id'] ?? 0);
+            $now   = date('Y-m-d H:i:s');
+            $today = date('Y-m-d');
+            $to    = date('Y-m-d', strtotime('+30 days'));
+
+            // Only the current user's own work: case events on cases they're
+            // assigned to + their own personal events; to-dos assigned to them.
+            $events = [];
+            foreach ($cases->getCalendarEvents($companyId, $today, $to, $uid) as $e) {
+                if ($e['hearing_at'] < $now) continue;
+                $e['source']   = 'case';
+                $e['start']    = $e['hearing_at'];
+                $events[] = $e;
+            }
+            foreach ($calendar->getForRange($companyId, $today, $to, $uid, $uid) as $e) {
+                if ($e['starts_at'] < $now) continue;
+                $e['source'] = 'personal';
+                $e['start']  = $e['starts_at'];
+                $events[] = $e;
+            }
+            usort($events, fn($a, $b) => strcmp($a['start'], $b['start']));
+            $events = array_slice($events, 0, 50);
+
+            echo json_encode([
+                'success' => true,
+                'me'      => $uid,
+                'events'  => $events,
+                'todos'   => $cases->getOpenTodos($companyId, $uid),
+            ]);
             break;
         }
 
@@ -481,17 +568,23 @@ try {
                 echo json_encode(['success' => false, 'message' => 'Внеси наслов и датум/време.']);
                 exit;
             }
-            foreach ($cases->getAssigneeUsers($companyId, $id) as $assignee) {
-                $aid = (int) $assignee['id'];
+            // Resolve the chosen assignees down to genuine case members (id => name).
+            $selected = resolve_event_assignees($cases, $companyId, $id, json_field('assignees'));
+            if (!$selected) {
+                echo json_encode(['success' => false, 'message' => 'Доделете го настанот барем на едно лице од доделените на предметот.']);
+                exit;
+            }
+            // Only the assigned employees need a free slot.
+            foreach ($selected as $aid => $name) {
                 $conflict = $calendar->findOverlap($companyId, $aid, $at, $end ?: null)
                          ?? $cases->findOverlappingHearing($companyId, $aid, $at, $end ?: null);
                 if ($conflict !== null) {
                     $key = isset($conflict['starts_at']) ? 'starts_at' : 'hearing_at';
-                    echo json_encode(['success' => false, 'message' => $assignee['name'] . ' веќе има настан во тој термин: ' . format_conflict($conflict, $key, 'ends_at')]);
+                    echo json_encode(['success' => false, 'message' => $name . ' веќе има настан во тој термин: ' . format_conflict($conflict, $key, 'ends_at')]);
                     exit;
                 }
             }
-            $hid = $cases->addHearing($companyId, $id, current_user()['id'] ?? null, $title, $at, trim($_POST['location'] ?? ''), trim($_POST['note'] ?? ''), $kind, $end ?: null);
+            $hid = $cases->addHearing($companyId, $id, current_user()['id'] ?? null, $title, $at, trim($_POST['location'] ?? ''), trim($_POST['note'] ?? ''), $kind, $end ?: null, array_keys($selected));
             if ($hid) fakta_audit('case.hearing', 'case', $id, $cases->caseLabel($companyId, $id) . ' · ' . hearing_kind_label($kind) . ': ' . $title);
             echo json_encode(['success' => (bool) $hid, 'message' => $hid ? 'Настанот е додаден.' : 'Невалидни податоци.', 'id' => $hid]);
             break;
@@ -508,17 +601,21 @@ try {
                 exit;
             }
             $hcid = $cases->getHearingCaseId($companyId, $hid);
-            foreach ($hcid !== null ? $cases->getAssigneeUsers($companyId, $hcid) : [] as $assignee) {
-                $aid = (int) $assignee['id'];
+            $selected = $hcid !== null ? resolve_event_assignees($cases, $companyId, $hcid, json_field('assignees')) : [];
+            if (!$selected) {
+                echo json_encode(['success' => false, 'message' => 'Доделете го настанот барем на едно лице од доделените на предметот.']);
+                exit;
+            }
+            foreach ($selected as $aid => $name) {
                 $conflict = $calendar->findOverlap($companyId, $aid, $at, $end ?: null)
                          ?? $cases->findOverlappingHearing($companyId, $aid, $at, $end ?: null, $hid);
                 if ($conflict !== null) {
                     $key = isset($conflict['starts_at']) ? 'starts_at' : 'hearing_at';
-                    echo json_encode(['success' => false, 'message' => $assignee['name'] . ' веќе има настан во тој термин: ' . format_conflict($conflict, $key, 'ends_at')]);
+                    echo json_encode(['success' => false, 'message' => $name . ' веќе има настан во тој термин: ' . format_conflict($conflict, $key, 'ends_at')]);
                     exit;
                 }
             }
-            $ok = $cases->updateHearing($companyId, $hid, (int) (current_user()['id'] ?? 0), current_role() === 'admin', $title, $at, trim($_POST['location'] ?? ''), trim($_POST['note'] ?? ''), $kind, $end ?: null);
+            $ok = $cases->updateHearing($companyId, $hid, (int) (current_user()['id'] ?? 0), current_role() === 'admin', $title, $at, trim($_POST['location'] ?? ''), trim($_POST['note'] ?? ''), $kind, $end ?: null, array_keys($selected));
             echo json_encode(['success' => $ok, 'message' => $ok ? 'Настанот е ажуриран.' : 'Немате дозвола или невалидни податоци.']);
             break;
         }
@@ -538,17 +635,79 @@ try {
         }
 
         case 'add_todo': {
+            // $id is the предмет the task belongs to, or 0/absent for a personal
+            // (non-case) task that is always self-assigned to its creator.
             $id    = (int) ($_POST['id'] ?? 0);
             $title = trim($_POST['title'] ?? '');
             $due   = trim($_POST['due_date'] ?? '');
+            $note  = trim($_POST['note'] ?? '');
             $asg   = (int) ($_POST['assigned_to'] ?? 0);
-            if ($id <= 0 || $title === '') {
+            if ($title === '') {
                 echo json_encode(['success' => false, 'message' => 'Внеси задача.']);
                 exit;
             }
-            $todoId = $cases->addTodo($companyId, $id, current_user()['id'] ?? null, $title, $due ?: null, $asg ?: null);
-            if ($todoId) fakta_audit('case.todo', 'case', $id, $cases->caseLabel($companyId, $id));
-            echo json_encode(['success' => (bool) $todoId, 'message' => $todoId ? 'Задачата е додадена.' : 'Предметот не постои.', 'id' => $todoId]);
+            $meId = (int) (current_user()['id'] ?? 0);
+            $role = current_role();
+
+            if ($id > 0) {
+                // Case-linked: admins may attach to any case; вработени/практиканти
+                // only to cases assigned to them.
+                if ($role !== 'admin' && !$cases->isCaseAssignee($companyId, $id, $meId)) {
+                    http_response_code(403);
+                    echo json_encode(['success' => false, 'message' => 'Можете да додавате задачи само на предмети доделени на вас.']);
+                    exit;
+                }
+                // Praktikant can only assign tasks to themselves (or to no one).
+                if ($role === 'praktikant' && $asg > 0 && $asg !== $meId) {
+                    echo json_encode(['success' => false, 'message' => 'Можете да доделувате задачи само на себе.']);
+                    exit;
+                }
+                // A to-do may only be assigned to someone доделен on that case.
+                if ($asg > 0 && !$cases->isCaseAssignee($companyId, $id, $asg)) {
+                    echo json_encode(['success' => false, 'message' => 'Задачата може да се додели само на лице доделено на предметот.']);
+                    exit;
+                }
+                $caseRef  = $id;
+                $assignee = $asg ?: null;
+            } else {
+                // Personal task — assigned to the creator.
+                $caseRef  = null;
+                $assignee = $meId ?: null;
+            }
+
+            $todoId = $cases->addTodo($companyId, $caseRef, $meId ?: null, $title, $due ?: null, $assignee, $note ?: null);
+            if ($todoId) {
+                fakta_audit('case.todo', $caseRef ? 'case' : 'todo', $caseRef, $caseRef ? $cases->caseLabel($companyId, $caseRef) : $title);
+                // Notify the assignee only when it's someone other than the creator.
+                if ($assignee && $assignee !== $meId) {
+                    $me = current_user();
+                    $notify->create($companyId, $assignee, $meId ?: null, $me['name'] ?? null, 'todo.assigned', $caseRef, $todoId, $title);
+                }
+            }
+            echo json_encode(['success' => (bool) $todoId, 'message' => $todoId ? 'Задачата е додадена.' : 'Грешка при креирање на задачата.', 'id' => $todoId]);
+            break;
+        }
+
+        case 'assignable_cases': {
+            // Active cases the current user may attach a to-do to (home-page picker).
+            // Searchable + capped so it scales on big tenants.
+            $meId = (int) (current_user()['id'] ?? 0);
+            $q    = trim($_GET['q'] ?? '');
+            echo json_encode(['success' => true, 'data' => $cases->getAssignableCases($companyId, $meId, current_role() === 'admin', $q, 25)]);
+            break;
+        }
+
+        case 'case_assignees': {
+            // The employees доделени to one case — the only valid to-do assignees.
+            // Non-admins may only inspect cases they're on (same rule as the picker).
+            $id   = (int) ($_GET['id'] ?? 0);
+            $meId = (int) (current_user()['id'] ?? 0);
+            if ($id <= 0) { echo json_encode(['success' => true, 'data' => []]); break; }
+            if (current_role() !== 'admin' && !$cases->isCaseAssignee($companyId, $id, $meId)) {
+                echo json_encode(['success' => false, 'message' => 'Немате пристап до овој предмет.', 'data' => []]);
+                break;
+            }
+            echo json_encode(['success' => true, 'data' => $cases->getAssigneeUsers($companyId, $id)]);
             break;
         }
 
@@ -556,8 +715,10 @@ try {
             $todoId = (int) ($_POST['todo_id'] ?? 0);
             $status = trim($_POST['status'] ?? '');
             if ($todoId <= 0 || $status === '') { echo json_encode(['success' => false, 'message' => 'Невалиден статус.']); exit; }
-            $ok = $cases->setTodoStatus($companyId, $todoId, $status);
-            echo json_encode(['success' => $ok, 'message' => $ok ? '' : 'Невалиден статус.']);
+            // Praktikant may only change the status of tasks assigned to them.
+            $assigneeOnly = current_role() === 'praktikant';
+            $ok = $cases->setTodoStatus($companyId, $todoId, $status, $assigneeOnly, (int) (current_user()['id'] ?? 0));
+            echo json_encode(['success' => $ok, 'message' => $ok ? '' : ($assigneeOnly ? 'Можете да менувате статус само на задачи доделени на вас.' : 'Невалиден статус.')]);
             break;
         }
 
@@ -565,9 +726,28 @@ try {
             $todoId = (int) ($_POST['todo_id'] ?? 0);
             $title  = trim($_POST['title'] ?? '');
             $due    = trim($_POST['due_date'] ?? '');
+            $note   = trim($_POST['note'] ?? '');
             $asg    = (int) ($_POST['assigned_to'] ?? 0);
             if ($todoId <= 0 || $title === '') { echo json_encode(['success' => false, 'message' => 'Внеси задача.']); exit; }
-            $ok = $cases->updateTodo($companyId, $todoId, (int) (current_user()['id'] ?? 0), current_role() === 'admin', $title, $due ?: null, $asg ?: null);
+            $meId = (int) (current_user()['id'] ?? 0);
+            // Praktikant can only assign tasks to themselves (or to no one).
+            if (current_role() === 'praktikant' && $asg > 0 && $asg !== $meId) {
+                echo json_encode(['success' => false, 'message' => 'Можете да доделувате задачи само на себе.']);
+                exit;
+            }
+            $caseId = $cases->getTodoCaseId($companyId, $todoId);
+            // On a case to-do, the assignee must be someone доделен on that case.
+            if ($asg > 0 && $caseId !== null && !$cases->isCaseAssignee($companyId, $caseId, $asg)) {
+                echo json_encode(['success' => false, 'message' => 'Задачата може да се додели само на лице доделено на предметот.']);
+                exit;
+            }
+            $prevAsg = $cases->getTodoAssignedTo($companyId, $todoId);
+            $ok = $cases->updateTodo($companyId, $todoId, (int) (current_user()['id'] ?? 0), current_role() === 'admin', $title, $due ?: null, $asg ?: null, $note ?: null);
+            // Notify only on a genuine reassignment to a new person.
+            if ($ok && $asg > 0 && $asg !== $prevAsg) {
+                $me = current_user();
+                $notify->create($companyId, $asg, (int) ($me['id'] ?? 0) ?: null, $me['name'] ?? null, 'todo.assigned', $caseId, $todoId, $title);
+            }
             echo json_encode(['success' => $ok, 'message' => $ok ? 'Задачата е ажурирана.' : 'Можете да уредувате само ваши задачи.']);
             break;
         }

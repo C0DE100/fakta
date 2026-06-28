@@ -343,11 +343,12 @@ safe($pdo, "
 CREATE TABLE IF NOT EXISTS case_todos (
     id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
     company_id   INT UNSIGNED NOT NULL,
-    case_id      INT UNSIGNED NOT NULL,
+    case_id      INT UNSIGNED NULL,
     title        VARCHAR(500) NOT NULL,
     status       VARCHAR(20) NOT NULL DEFAULT 'open',
     is_done      TINYINT(1) NOT NULL DEFAULT 0,
     due_date     DATE NULL,
+    note         TEXT NULL,
     assigned_to  INT UNSIGNED NULL,
     created_by   INT UNSIGNED NULL,
     created_at   DATETIME NOT NULL DEFAULT current_timestamp(),
@@ -361,6 +362,9 @@ CREATE TABLE IF NOT EXISTS case_todos (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
 safe($pdo, "ALTER TABLE case_todos ADD COLUMN deleted_at DATETIME NULL");
+// Free-text забелешка per to-do, and allow case_id = NULL for personal (non-case) to-dos.
+safe($pdo, "ALTER TABLE case_todos ADD COLUMN note TEXT NULL AFTER due_date");
+safe($pdo, "ALTER TABLE case_todos MODIFY COLUMN case_id INT UNSIGNED NULL");
 
 // Calendar events on a case: рочишта, судења и состаноци (see `kind`).
 safe($pdo, "
@@ -387,6 +391,38 @@ safe($pdo, "ALTER TABLE case_hearings ADD COLUMN kind ENUM('hearing','trial','me
 safe($pdo, "ALTER TABLE case_hearings MODIFY COLUMN kind ENUM('hearing','trial','meeting','other') NOT NULL DEFAULT 'hearing'");
 safe($pdo, "ALTER TABLE case_hearings ADD COLUMN deleted_at DATETIME NULL");
 safe($pdo, "ALTER TABLE case_hearings ADD COLUMN ends_at DATETIME NULL AFTER hearing_at");
+
+// Which employees a case event (настан) is assigned to. An event shows up only
+// on the calendars of the people listed here — not on every case assignee's.
+// Assignees must themselves be assigned to the case (case_assignees).
+safe($pdo, "
+CREATE TABLE IF NOT EXISTS case_hearing_assignees (
+    company_id INT UNSIGNED NOT NULL,
+    hearing_id INT UNSIGNED NOT NULL,
+    user_id    INT UNSIGNED NOT NULL,
+    assigned_at DATETIME NOT NULL DEFAULT current_timestamp(),
+    PRIMARY KEY (hearing_id, user_id),
+    KEY idx_chasg_user (company_id, user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+// Backfill: existing events become assigned to their creator (the person who
+// scheduled them). Events with no recorded creator fall back to every assignee
+// of their case, preserving the old \"everyone in the case sees it\" behaviour.
+safe($pdo, "
+INSERT IGNORE INTO case_hearing_assignees (company_id, hearing_id, user_id)
+SELECT h.company_id, h.id, h.created_by
+  FROM case_hearings h
+ WHERE h.created_by IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM case_hearing_assignees x WHERE x.hearing_id = h.id)
+");
+safe($pdo, "
+INSERT IGNORE INTO case_hearing_assignees (company_id, hearing_id, user_id)
+SELECT h.company_id, h.id, ca.user_id
+  FROM case_hearings h
+  JOIN case_assignees ca ON ca.case_id = h.case_id AND ca.deleted_at IS NULL
+ WHERE h.created_by IS NULL
+   AND NOT EXISTS (SELECT 1 FROM case_hearing_assignees x WHERE x.hearing_id = h.id)
+");
 
 // Personal calendar events (NOT tied to a case): client meetings, reminders,
 // anything the user names. Owned by user_id; only the owner manages them.
@@ -428,6 +464,30 @@ CREATE TABLE IF NOT EXISTS case_files (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
 safe($pdo, "ALTER TABLE case_files ADD COLUMN deleted_at DATETIME NULL");
+
+/* ============================================================ Notifications */
+
+// In-app notifications (Facebook-style bell). One row per recipient.
+// `type` keeps it extensible; today only 'todo.assigned' is produced.
+safe($pdo, "
+CREATE TABLE IF NOT EXISTS notifications (
+    id         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    company_id INT UNSIGNED NOT NULL,
+    user_id    INT UNSIGNED NOT NULL,            -- recipient
+    actor_id   INT UNSIGNED NULL,                -- who triggered it
+    actor_name VARCHAR(255) NULL,                -- snapshot, in case the user is gone
+    type       VARCHAR(40) NOT NULL,             -- e.g. 'todo.assigned'
+    case_id    INT UNSIGNED NULL,                -- deep-link target case
+    todo_id    INT UNSIGNED NULL,                -- related to-do
+    title      VARCHAR(500) NULL,                -- snapshot of the to-do title
+    is_read    TINYINT(1) NOT NULL DEFAULT 0,
+    read_at    DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT current_timestamp(),
+    PRIMARY KEY (id),
+    KEY idx_nt_user    (company_id, user_id, is_read),
+    KEY idx_nt_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
 
 /* ============================================================ Audit */
 

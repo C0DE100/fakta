@@ -194,10 +194,17 @@ $(function () {
     function nextHearingHtml(r) {
         if (!r.next_hearing) return '';
         var k = HEARING_KIND_LABEL[r.next_hearing_kind] ? r.next_hearing_kind : 'hearing';
+        // Avatars of the employees the next event is assigned to (доделено на).
+        var asgNames = (r.next_hearing_assignees || '').split('||').filter(Boolean);
+        var avs = asgNames.length
+            ? '<span class="case-next-hearing-avs">' + assigneeAvatars(asgNames.map(function (n) { return { name: n }; })) + '</span>'
+            : '';
         return '<div class="case-next-hearing case-next-hearing--' + k + '">'
             + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>'
             + '<span class="hkind-badge hkind--' + k + '">' + esc(HEARING_KIND_LABEL[k]) + '</span>'
-            + '<span class="case-next-hearing-text"><span class="case-next-hearing-label">Следен настан:</span> <strong>' + esc(hearingLabel(r.next_hearing)) + '</strong></span></div>';
+            + avs
+            + '<span class="case-next-hearing-text"><span class="case-next-hearing-label">Следен настан:</span> <strong>' + esc(hearingLabel(r.next_hearing)) + '</strong></span>'
+            + '</div>';
     }
 
     function card(r) {
@@ -211,7 +218,7 @@ $(function () {
             + '</div>'
             + fld('Основ', r.basis ? esc(r.basis) : muted('Нема основ'))
             + fld((r.client_parties && r.client_parties.length > 1) ? 'Наши странка' : 'Наш клиент', partyLines(r.client_parties, r.client_name, r.client_role, '—'))
-            + fld((r.opponent_parties && r.opponent_parties.length > 1) ? 'Спротивна странка' : 'Спротивна странка', partyLines(r.opponent_parties, r.opponent_name, r.opponent_role, 'Нема'))
+            + fld((r.opponent_parties && r.opponent_parties.length > 1) ? 'Спротивна странка' : 'Спротивна странка', partyLines(r.opponent_parties, r.opponent_name, r.opponent_role, '—'))
             + '<div class="case-card-two">'
             +   fld('Вредност', value ? esc(value) : muted('—'))
             +   fld('Административен број', r.admin_number ? esc(r.admin_number) : muted('—'))

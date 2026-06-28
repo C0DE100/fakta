@@ -220,6 +220,71 @@ class CaseFile
     }
 
     /* =====================================================================
+     | Доделено на (assignees) — add / remove one without editing the case
+     * =================================================================== */
+
+    /** True if the user is an active member (admin/employee/praktikant) of the company. */
+    private function isCompanyMember(int $companyId, int $userId): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT 1 FROM users WHERE id = :uid AND company_id = :cid AND role IN ('admin','employee','praktikant')"
+        );
+        $stmt->execute([':uid' => $userId, ':cid' => $companyId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /** True if the user is currently assigned to the case. */
+    public function isCaseAssignee(int $companyId, int $caseId, int $userId): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT 1 FROM case_assignees
+             WHERE case_id = :id AND company_id = :cid AND user_id = :uid AND deleted_at IS NULL"
+        );
+        $stmt->execute([':id' => $caseId, ':cid' => $companyId, ':uid' => $userId]);
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /** Assign a case to one more employee. Validates company membership. */
+    public function addAssignee(int $companyId, int $caseId, int $userId): bool
+    {
+        if (!$this->isCompanyMember($companyId, $userId)) {
+            return false;
+        }
+        $chk = $this->db->prepare("SELECT 1 FROM cases WHERE id = :id AND company_id = :cid AND deleted_at IS NULL");
+        $chk->execute([':id' => $caseId, ':cid' => $companyId]);
+        if (!$chk->fetchColumn()) {
+            return false;
+        }
+        // PK is (case_id, user_id); revive a previously soft-deleted row instead of failing.
+        $this->db->prepare(
+            "INSERT INTO case_assignees (company_id, case_id, user_id, assigned_at, deleted_at)
+             VALUES (:cid, :case, :uid, NOW(), NULL)
+             ON DUPLICATE KEY UPDATE deleted_at = NULL, assigned_at = NOW()"
+        )->execute([':cid' => $companyId, ':case' => $caseId, ':uid' => $userId]);
+        $this->rebuildSearchText($companyId, $caseId);
+        return true;
+    }
+
+    /**
+     * Unassign a case from an employee. Also drops them from every event
+     * (настан) on this case, since event assignees must be case assignees.
+     */
+    public function removeAssignee(int $companyId, int $caseId, int $userId): bool
+    {
+        $del = $this->db->prepare(
+            "DELETE FROM case_assignees WHERE case_id = :id AND company_id = :cid AND user_id = :uid"
+        );
+        $del->execute([':id' => $caseId, ':cid' => $companyId, ':uid' => $userId]);
+        $this->db->prepare(
+            "DELETE cha FROM case_hearing_assignees cha
+             JOIN case_hearings h ON h.id = cha.hearing_id
+             WHERE h.case_id = :id AND cha.company_id = :cid AND cha.user_id = :uid"
+        )->execute([':id' => $caseId, ':cid' => $companyId, ':uid' => $userId]);
+        $this->rebuildSearchText($companyId, $caseId);
+        return $del->rowCount() > 0;
+    }
+
+    /* =====================================================================
      | Listing (paginated, filtered)
      * =================================================================== */
 
@@ -280,6 +345,9 @@ class CaseFile
                     an.admin_number AS admin_number,
                     nh.hearing_at AS next_hearing,
                     nh.kind AS next_hearing_kind,
+                    (SELECT GROUP_CONCAT(u3.name ORDER BY u3.name SEPARATOR '||')
+                       FROM case_hearing_assignees cha3 JOIN users u3 ON u3.id = cha3.user_id
+                      WHERE cha3.hearing_id = nh.id) AS next_hearing_assignees,
                     (SELECT COUNT(*) FROM case_files cf WHERE cf.case_id = c.id AND cf.deleted_at IS NULL) AS doc_count,
                     u.name AS created_by_name
                 FROM cases c
@@ -511,6 +579,13 @@ class CaseFile
             $del->execute([':id' => $caseId, ':cid' => $companyId]);
             $ok = $del->rowCount() > 0;
             if ($ok) {
+                // Event-assignee rows key on hearing_id (no case_id), so purge them
+                // before the case_hearings rows they reference disappear.
+                $pdo->prepare(
+                    "DELETE cha FROM case_hearing_assignees cha
+                     JOIN case_hearings h ON h.id = cha.hearing_id
+                     WHERE h.case_id = :id AND cha.company_id = :cid"
+                )->execute([':id' => $caseId, ':cid' => $companyId]);
                 foreach (self::SOFT_DELETE_CHILD_TABLES as $t) {
                     $pdo->prepare("DELETE FROM {$t} WHERE case_id = :id AND company_id = :cid")
                         ->execute([':id' => $caseId, ':cid' => $companyId]);
@@ -794,36 +869,95 @@ class CaseFile
     /** Default event length when no end time is given. */
     private const DEFAULT_EVENT_MINUTES = 60;
 
-    /** Add a hearing/event. $hearingAt/$endsAt are 'YYYY-MM-DD HH:MM(:SS)'. Returns id or null. */
-    public function addHearing(int $companyId, int $caseId, ?int $createdBy, string $title, string $hearingAt, ?string $location, ?string $note, string $kind = 'hearing', ?string $endsAt = null): ?int
+    /**
+     * Add a hearing/event. $hearingAt/$endsAt are 'YYYY-MM-DD HH:MM(:SS)'.
+     * $assignees are the employees the event is shown to — at least one, and each
+     * must already be a case assignee. Returns id, or null on invalid input.
+     */
+    public function addHearing(int $companyId, int $caseId, ?int $createdBy, string $title, string $hearingAt, ?string $location, ?string $note, string $kind = 'hearing', ?string $endsAt = null, array $assignees = []): ?int
     {
         $title = trim($title);
         $at = $this->normDateTime($hearingAt);
         if ($title === '' || $at === null) {
             return null;
         }
+        $assignees = $this->filterCaseAssignees($companyId, $caseId, $assignees);
+        if (!$assignees) {
+            return null; // an event must be assigned to at least one case member
+        }
         $end = $this->normEndDateTime($at, $endsAt);
-        $chk = $this->db->prepare("SELECT 1 FROM cases WHERE id = :id AND company_id = :cid AND deleted_at IS NULL");
-        $chk->execute([':id' => $caseId, ':cid' => $companyId]);
-        if (!$chk->fetchColumn()) {
-            return null;
+        $pdo = $this->db->getConnection();
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare(
+                "INSERT INTO case_hearings (company_id, case_id, kind, title, hearing_at, ends_at, location, note, created_by, created_at)
+                 VALUES (:cid, :case, :kind, :title, :at, :end, :loc, :note, :by, NOW())"
+            );
+            $stmt->execute([
+                ':cid'   => $companyId,
+                ':case'  => $caseId,
+                ':kind'  => $this->normKind($kind),
+                ':title' => mb_substr($title, 0, 255),
+                ':at'    => $at,
+                ':end'   => $end,
+                ':loc'   => $this->nz($location),
+                ':note'  => $this->nz($note),
+                ':by'    => $createdBy,
+            ]);
+            $hid = (int) $pdo->lastInsertId();
+            $this->replaceHearingAssignees($companyId, $hid, $assignees);
+            $pdo->commit();
+            return $hid;
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /** Keep only the ids that are genuine, currently-assigned case members. */
+    private function filterCaseAssignees(int $companyId, int $caseId, array $userIds): array
+    {
+        $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        if (!$userIds) {
+            return [];
+        }
+        $in   = implode(',', array_fill(0, count($userIds), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT user_id FROM case_assignees
+             WHERE case_id = ? AND company_id = ? AND deleted_at IS NULL AND user_id IN ({$in})"
+        );
+        $stmt->execute(array_merge([$caseId, $companyId], $userIds));
+        return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /** Replace an event's assignee set (assumes ids already validated). */
+    private function replaceHearingAssignees(int $companyId, int $hearingId, array $userIds): void
+    {
+        $this->db->prepare("DELETE FROM case_hearing_assignees WHERE hearing_id = :hid AND company_id = :cid")
+            ->execute([':hid' => $hearingId, ':cid' => $companyId]);
+        if (!$userIds) {
+            return;
         }
         $stmt = $this->db->prepare(
-            "INSERT INTO case_hearings (company_id, case_id, kind, title, hearing_at, ends_at, location, note, created_by, created_at)
-             VALUES (:cid, :case, :kind, :title, :at, :end, :loc, :note, :by, NOW())"
+            "INSERT INTO case_hearing_assignees (company_id, hearing_id, user_id, assigned_at)
+             VALUES (:cid, :hid, :uid, NOW())"
         );
-        $stmt->execute([
-            ':cid'   => $companyId,
-            ':case'  => $caseId,
-            ':kind'  => $this->normKind($kind),
-            ':title' => mb_substr($title, 0, 255),
-            ':at'    => $at,
-            ':end'   => $end,
-            ':loc'   => $this->nz($location),
-            ':note'  => $this->nz($note),
-            ':by'    => $createdBy,
-        ]);
-        return (int) $this->db->lastInsertId();
+        foreach ($userIds as $uid) {
+            $stmt->execute([':cid' => $companyId, ':hid' => $hearingId, ':uid' => (int) $uid]);
+        }
+    }
+
+    /** An event's assignees as [{id, name}], for conflict checks / display. */
+    public function getHearingAssignees(int $companyId, int $hearingId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT u.id, u.name FROM case_hearing_assignees cha
+             JOIN users u ON u.id = cha.user_id
+             WHERE cha.hearing_id = :hid AND cha.company_id = :cid
+             ORDER BY u.name"
+        );
+        $stmt->execute([':hid' => $hearingId, ':cid' => $companyId]);
+        return $stmt->fetchAll();
     }
 
     /**
@@ -838,8 +972,8 @@ class CaseFile
         }
         $end = $this->normEndDateTime($start, $endsAt);
         $sql = "SELECT h.title, h.hearing_at, h.ends_at FROM case_hearings h
-                JOIN case_assignees ca ON ca.case_id = h.case_id AND ca.company_id = h.company_id AND ca.deleted_at IS NULL
-                WHERE h.company_id = :cid AND h.deleted_at IS NULL AND ca.user_id = :uid
+                JOIN case_hearing_assignees cha ON cha.hearing_id = h.id AND cha.company_id = h.company_id
+                WHERE h.company_id = :cid AND h.deleted_at IS NULL AND cha.user_id = :uid
                   AND h.hearing_at < :end AND h.ends_at > :start";
         $params = [':cid' => $companyId, ':uid' => $userId, ':start' => $start, ':end' => $end];
         if ($excludeHearingId > 0) {
@@ -874,7 +1008,7 @@ class CaseFile
         return $stmt->fetchAll();
     }
 
-    /** Hearings on a case, chronological (earliest first), with creator name. */
+    /** Hearings on a case, chronological (earliest first), with creator name + assignees. */
     public function getHearings(int $companyId, int $caseId): array
     {
         $stmt = $this->db->prepare(
@@ -885,7 +1019,29 @@ class CaseFile
              ORDER BY h.hearing_at ASC"
         );
         $stmt->execute([':id' => $caseId, ':cid' => $companyId]);
-        return $stmt->fetchAll();
+        $rows = $stmt->fetchAll();
+        if (!$rows) {
+            return $rows;
+        }
+        // Attach each event's assignees ([{id,name}]) in one extra query.
+        $ids = array_column($rows, 'id');
+        $in  = implode(',', array_fill(0, count($ids), '?'));
+        $astmt = $this->db->prepare(
+            "SELECT cha.hearing_id, u.id, u.name
+             FROM case_hearing_assignees cha JOIN users u ON u.id = cha.user_id
+             WHERE cha.company_id = ? AND cha.hearing_id IN ({$in})
+             ORDER BY u.name"
+        );
+        $astmt->execute(array_merge([$companyId], $ids));
+        $byHearing = [];
+        foreach ($astmt->fetchAll() as $r) {
+            $byHearing[$r['hearing_id']][] = ['id' => (int) $r['id'], 'name' => $r['name']];
+        }
+        foreach ($rows as &$row) {
+            $row['assignees'] = $byHearing[$row['id']] ?? [];
+        }
+        unset($row);
+        return $rows;
     }
 
     /** Resolve an end time: explicit value if valid, else start + default length. */
@@ -914,8 +1070,9 @@ class CaseFile
         $params = [':cid' => $companyId, ':from' => $from, ':to' => $to];
         $assigneeFilter = '';
         if ($assigneeId > 0) {
-            $assigneeFilter = 'AND EXISTS (SELECT 1 FROM case_assignees caf
-                                          WHERE caf.case_id = c.id AND caf.user_id = :aid)';
+            // An event is shown only to the employees it's assigned to (настан · доделено на).
+            $assigneeFilter = 'AND EXISTS (SELECT 1 FROM case_hearing_assignees chaf
+                                          WHERE chaf.hearing_id = h.id AND chaf.user_id = :aid)';
             $params[':aid'] = $assigneeId;
         }
 
@@ -928,8 +1085,8 @@ class CaseFile
                              CASE WHEN cl.type = 'company' THEN cl.company_name ELSE cl.full_name END
                     ) AS client_name,
                     (SELECT GROUP_CONCAT(u2.name ORDER BY u2.name SEPARATOR ', ')
-                       FROM case_assignees ca2 JOIN users u2 ON u2.id = ca2.user_id
-                      WHERE ca2.case_id = c.id) AS assignees
+                       FROM case_hearing_assignees cha2 JOIN users u2 ON u2.id = cha2.user_id
+                      WHERE cha2.hearing_id = h.id) AS assignees
              FROM case_hearings h
              JOIN cases c ON c.id = h.case_id AND c.deleted_at IS NULL
              LEFT JOIN case_parties pc ON pc.case_id = c.id AND pc.side = 'client' AND pc.is_primary = 1 AND pc.deleted_at IS NULL
@@ -944,28 +1101,42 @@ class CaseFile
         return $stmt->fetchAll();
     }
 
-    public function updateHearing(int $companyId, int $hearingId, int $userId, bool $isAdmin, string $title, string $hearingAt, ?string $location, ?string $note, string $kind = 'hearing', ?string $endsAt = null): bool
+    public function updateHearing(int $companyId, int $hearingId, int $userId, bool $isAdmin, string $title, string $hearingAt, ?string $location, ?string $note, string $kind = 'hearing', ?string $endsAt = null, array $assignees = []): bool
     {
         $title = trim($title);
         $at = $this->normDateTime($hearingAt);
         if ($title === '' || $at === null || !$this->hearingEditable($companyId, $hearingId, $userId, $isAdmin)) {
             return false;
         }
+        $caseId = $this->getHearingCaseId($companyId, $hearingId);
+        $assignees = $caseId !== null ? $this->filterCaseAssignees($companyId, $caseId, $assignees) : [];
+        if (!$assignees) {
+            return false; // an event must stay assigned to at least one case member
+        }
         $end = $this->normEndDateTime($at, $endsAt);
-        $this->db->prepare(
-            "UPDATE case_hearings SET kind = :kind, title = :title, hearing_at = :at, ends_at = :end, location = :loc, note = :note
-             WHERE id = :id AND company_id = :cid"
-        )->execute([
-            ':kind'  => $this->normKind($kind),
-            ':title' => mb_substr($title, 0, 255),
-            ':at'    => $at,
-            ':end'   => $end,
-            ':loc'   => $this->nz($location),
-            ':note'  => $this->nz($note),
-            ':id'    => $hearingId,
-            ':cid'   => $companyId,
-        ]);
-        return true;
+        $pdo = $this->db->getConnection();
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare(
+                "UPDATE case_hearings SET kind = :kind, title = :title, hearing_at = :at, ends_at = :end, location = :loc, note = :note
+                 WHERE id = :id AND company_id = :cid"
+            )->execute([
+                ':kind'  => $this->normKind($kind),
+                ':title' => mb_substr($title, 0, 255),
+                ':at'    => $at,
+                ':end'   => $end,
+                ':loc'   => $this->nz($location),
+                ':note'  => $this->nz($note),
+                ':id'    => $hearingId,
+                ':cid'   => $companyId,
+            ]);
+            $this->replaceHearingAssignees($companyId, $hearingId, $assignees);
+            $pdo->commit();
+            return true;
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
     }
 
     public function deleteHearing(int $companyId, int $hearingId, int $userId, bool $isAdmin): bool
@@ -1007,38 +1178,84 @@ class CaseFile
      | Задачи (to-do)
      * =================================================================== */
 
-    /** Add a to-do to a case. $dueDate is 'YYYY-MM-DD' or null. Returns id or null. */
-    public function addTodo(int $companyId, int $caseId, ?int $createdBy, string $title, ?string $dueDate, ?int $assignedTo): ?int
+    /**
+     * Add a to-do. $caseId is the предмет it belongs to, or null for a personal
+     * (non-case) task. $dueDate is 'YYYY-MM-DD' or null, $note an optional
+     * забелешка. Returns id, or null on invalid title / non-existent case.
+     */
+    public function addTodo(int $companyId, ?int $caseId, ?int $createdBy, string $title, ?string $dueDate, ?int $assignedTo, ?string $note = null): ?int
     {
         $title = trim($title);
         if ($title === '') {
             return null;
         }
-        $chk = $this->db->prepare("SELECT 1 FROM cases WHERE id = :id AND company_id = :cid AND deleted_at IS NULL");
-        $chk->execute([':id' => $caseId, ':cid' => $companyId]);
-        if (!$chk->fetchColumn()) {
-            return null;
+        if ($caseId !== null) {
+            $chk = $this->db->prepare("SELECT 1 FROM cases WHERE id = :id AND company_id = :cid AND deleted_at IS NULL");
+            $chk->execute([':id' => $caseId, ':cid' => $companyId]);
+            if (!$chk->fetchColumn()) {
+                return null;
+            }
         }
         $stmt = $this->db->prepare(
-            "INSERT INTO case_todos (company_id, case_id, title, due_date, assigned_to, created_by, created_at)
-             VALUES (:cid, :case, :title, :due, :assignee, :by, NOW())"
+            "INSERT INTO case_todos (company_id, case_id, title, due_date, note, assigned_to, created_by, created_at)
+             VALUES (:cid, :case, :title, :due, :note, :assignee, :by, NOW())"
         );
         $stmt->execute([
             ':cid'      => $companyId,
             ':case'     => $caseId,
             ':title'    => mb_substr($title, 0, 500),
             ':due'      => $this->nzDate($dueDate),
+            ':note'     => $this->nz($note),
             ':assignee' => $assignedTo ?: null,
             ':by'       => $createdBy,
         ]);
         return (int) $this->db->lastInsertId();
     }
 
+    /**
+     * Active (non-archived, non-deleted) cases a user may attach a to-do to:
+     * every case for admins, only ones they're assigned to otherwise. Optional
+     * substring $search (rides the denormalized search_text, like the listing)
+     * and a hard $limit keep the home-page picker fast on big tenants. Returns
+     * [{id, case_number, client_name}].
+     */
+    public function getAssignableCases(int $companyId, int $userId, bool $isAdmin, string $search = '', int $limit = 25): array
+    {
+        $limit  = max(1, min(50, $limit));
+        $conds  = ['c.company_id = :cid', 'c.deleted_at IS NULL', 'c.archived_at IS NULL'];
+        $params = [':cid' => $companyId];
+        if (!$isAdmin) {
+            $conds[]        = 'EXISTS (SELECT 1 FROM case_assignees ca
+                                       WHERE ca.case_id = c.id AND ca.user_id = :uid AND ca.deleted_at IS NULL)';
+            $params[':uid'] = $userId;
+        }
+        $search = trim($search);
+        if ($search !== '') {
+            $conds[]      = 'c.search_text LIKE :q';
+            $params[':q'] = '%' . $search . '%';
+        }
+        $where = implode(' AND ', $conds);
+        $stmt = $this->db->prepare(
+            "SELECT c.id, " . self::CASE_NUMBER_SQL . " AS case_number,
+                    COALESCE(NULLIF(pc.name, ''),
+                             CASE WHEN cl.type = 'company' THEN cl.company_name ELSE cl.full_name END
+                    ) AS client_name
+             FROM cases c
+             LEFT JOIN case_parties pc ON pc.case_id = c.id AND pc.side = 'client' AND pc.is_primary = 1 AND pc.deleted_at IS NULL
+             LEFT JOIN clients cl ON cl.id = pc.client_id
+             WHERE {$where}
+             ORDER BY c.case_year DESC, c.case_seq DESC
+             LIMIT {$limit}"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
     /** To-dos on a case: active statuses first, then by due date, with names. */
     public function getTodos(int $companyId, int $caseId): array
     {
         $stmt = $this->db->prepare(
-            "SELECT t.id, t.title, t.status, t.is_done, t.due_date, t.assigned_to, t.created_by,
+            "SELECT t.id, t.title, t.status, t.is_done, t.due_date, t.note, t.assigned_to, t.created_by,
                     t.created_at, t.completed_at, a.name AS assignee_name, cu.name AS creator_name
              FROM case_todos t
              LEFT JOIN users a  ON a.id = t.assigned_to
@@ -1051,14 +1268,82 @@ class CaseFile
         return $stmt->fetchAll();
     }
 
-    /** Set a to-do's workflow status — anyone with case access (shared checklist). */
-    public function setTodoStatus(int $companyId, int $todoId, string $status): bool
+    /**
+     * Open to-dos (open / in_progress / waiting) across every active, non-deleted
+     * case in the company, each carrying its case label + primary client so the
+     * dashboard can group them under the case they belong to. Overdue/soonest
+     * first. Pass $assigneeId to limit to one person's tasks. Used by the home
+     * dashboard.
+     */
+    public function getOpenTodos(int $companyId, int $assigneeId = 0, int $limit = 300): array
+    {
+        $limit = max(1, min(500, $limit));
+        $params = [':cid' => $companyId];
+        $assigneeFilter = '';
+        if ($assigneeId > 0) {
+            $assigneeFilter = 'AND t.assigned_to = :aid';
+            $params[':aid'] = $assigneeId;
+        }
+        $stmt = $this->db->prepare(
+            "SELECT t.id, t.title, t.status, t.due_date, t.note, t.assigned_to, t.created_by, t.created_at,
+                    t.case_id, a.name AS assignee_name,
+                    " . self::CASE_NUMBER_SQL . " AS case_number,
+                    c.basis AS case_basis, c.color AS case_color, c.status AS case_status,
+                    COALESCE(NULLIF(pc.name, ''),
+                             CASE WHEN cl.type = 'company' THEN cl.company_name ELSE cl.full_name END
+                    ) AS client_name
+             FROM case_todos t
+             LEFT JOIN cases c ON c.id = t.case_id AND c.deleted_at IS NULL AND c.archived_at IS NULL
+             LEFT JOIN users a ON a.id = t.assigned_to
+             LEFT JOIN case_parties pc ON pc.case_id = c.id AND pc.side = 'client' AND pc.is_primary = 1 AND pc.deleted_at IS NULL
+             LEFT JOIN clients cl ON cl.id = pc.client_id
+             WHERE t.company_id = :cid AND t.deleted_at IS NULL
+               AND t.status IN ('open', 'in_progress', 'waiting')
+               AND (t.case_id IS NULL OR c.id IS NOT NULL)
+               {$assigneeFilter}
+             ORDER BY (t.due_date IS NULL) ASC, t.due_date ASC,
+                      FIELD(t.status, 'in_progress', 'open', 'waiting'), t.created_at ASC
+             LIMIT {$limit}"
+        );
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    /** The user a to-do is currently assigned to (0 if none / not found). For reassignment notifications. */
+    public function getTodoAssignedTo(int $companyId, int $todoId): int
+    {
+        $stmt = $this->db->prepare("SELECT assigned_to FROM case_todos WHERE id = :id AND company_id = :cid");
+        $stmt->execute([':id' => $todoId, ':cid' => $companyId]);
+        return (int) $stmt->fetchColumn();
+    }
+
+    /** The case_id a to-do belongs to, or null. For deep-linking notifications. */
+    public function getTodoCaseId(int $companyId, int $todoId): ?int
+    {
+        $stmt = $this->db->prepare("SELECT case_id FROM case_todos WHERE id = :id AND company_id = :cid");
+        $stmt->execute([':id' => $todoId, ':cid' => $companyId]);
+        $caseId = $stmt->fetchColumn();
+        return $caseId !== false ? (int) $caseId : null;
+    }
+
+    /**
+     * Set a to-do's workflow status — normally anyone with case access (shared
+     * checklist). When $assigneeOnly is set (praktikant), only the person the
+     * to-do is assigned to may change its status.
+     */
+    public function setTodoStatus(int $companyId, int $todoId, string $status, bool $assigneeOnly = false, int $userId = 0): bool
     {
         if (!in_array($status, self::TODO_STATUSES, true)) {
             return false;
         }
-        $chk = $this->db->prepare("SELECT 1 FROM case_todos WHERE id = :id AND company_id = :cid");
-        $chk->execute([':id' => $todoId, ':cid' => $companyId]);
+        $sql = "SELECT 1 FROM case_todos WHERE id = :id AND company_id = :cid";
+        $params = [':id' => $todoId, ':cid' => $companyId];
+        if ($assigneeOnly) {
+            $sql .= ' AND assigned_to = :uid';
+            $params[':uid'] = $userId;
+        }
+        $chk = $this->db->prepare($sql);
+        $chk->execute($params);
         if (!$chk->fetchColumn()) {
             return false;
         }
@@ -1077,8 +1362,8 @@ class CaseFile
         return true;
     }
 
-    /** Edit a to-do (title/due/assignee) — creator or admin only. */
-    public function updateTodo(int $companyId, int $todoId, int $userId, bool $isAdmin, string $title, ?string $dueDate, ?int $assignedTo): bool
+    /** Edit a to-do (title/due/note/assignee) — creator or admin only. */
+    public function updateTodo(int $companyId, int $todoId, int $userId, bool $isAdmin, string $title, ?string $dueDate, ?int $assignedTo, ?string $note = null): bool
     {
         $title = trim($title);
         if ($title === '') {
@@ -1088,11 +1373,12 @@ class CaseFile
             return false;
         }
         $this->db->prepare(
-            "UPDATE case_todos SET title = :title, due_date = :due, assigned_to = :assignee
+            "UPDATE case_todos SET title = :title, due_date = :due, note = :note, assigned_to = :assignee
              WHERE id = :id AND company_id = :cid"
         )->execute([
             ':title'    => mb_substr($title, 0, 500),
             ':due'      => $this->nzDate($dueDate),
+            ':note'     => $this->nz($note),
             ':assignee' => $assignedTo ?: null,
             ':id'       => $todoId,
             ':cid'      => $companyId,
@@ -1137,7 +1423,7 @@ class CaseFile
     public function getFiles(int $companyId, int $caseId): array
     {
         $stmt = $this->db->prepare(
-            "SELECT f.id, f.orig_name, f.ext, f.size_bytes, f.created_at, u.name AS uploaded_by_name
+            "SELECT f.id, f.orig_name, f.ext, f.size_bytes, f.created_at, f.uploaded_by, u.name AS uploaded_by_name
              FROM case_files f
              LEFT JOIN users u ON u.id = f.uploaded_by
              WHERE f.case_id = :case AND f.company_id = :cid AND f.deleted_at IS NULL

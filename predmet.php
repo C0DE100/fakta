@@ -9,9 +9,11 @@ if (current_role() === 'super_admin') {
 
 require_once __DIR__ . '/classes/CaseFile.php';
 
-$companyId = current_company_id();
-$canManage = current_role() !== 'praktikant';
-$caseId    = (int) ($_GET['id'] ?? 0);
+$companyId    = current_company_id();
+$canManage    = current_role() !== 'praktikant';
+$isPraktikant = current_role() === 'praktikant';
+$myId         = (int) (current_user()['id'] ?? 0);
+$caseId       = (int) ($_GET['id'] ?? 0);
 
 $cases = new CaseFile($GLOBALS['fakta_db']);
 $case  = $caseId > 0 ? $cases->getById($companyId, $caseId) : null;
@@ -192,23 +194,37 @@ if ($case) {
             </div>
 
             <!-- Доделено на (assignees) -->
-            <div class="case-panel">
+            <?php $assignedIds = array_map(fn($a) => (int) $a['id'], $case['assignees']); ?>
+            <div class="case-panel" id="caseAssigneesPanel">
                 <div class="case-panel-head">
-                    <h2 class="case-panel-title">Доделено на</h2>
-                    <span class="case-panel-badge"><?= count($case['assignees']) ?></span>
+                    <h2 class="case-panel-title">Предметот го работи</h2>
+                    <span class="case-panel-badge" id="assigneeCount"><?= count($case['assignees']) ?></span>
                 </div>
-                <?php if ($case['assignees']): ?>
-                    <div class="case-assignee-list">
-                        <?php foreach ($case['assignees'] as $a):
-                            $col = fakta_avatar_color($a['name']); ?>
-                            <span class="case-assignee-pill">
-                                <span class="case-assignee-av" style="background:<?= $col['bg'] ?>;color:<?= $col['fg'] ?>"><?= htmlspecialchars(fakta_initials($a['name'])) ?></span>
-                                <?= htmlspecialchars($a['name']) ?>
-                            </span>
+                <div class="case-assignee-list" id="assigneeList">
+                    <?php foreach ($case['assignees'] as $a):
+                        $col = fakta_avatar_color($a['name']); ?>
+                        <span class="case-assignee-pill" data-uid="<?= (int) $a['id'] ?>">
+                            <span class="case-assignee-av" style="background:<?= $col['bg'] ?>;color:<?= $col['fg'] ?>"><?= htmlspecialchars(fakta_initials($a['name'])) ?></span>
+                            <?= htmlspecialchars($a['name']) ?>
+                            <?php if ($canManage): ?>
+                            <button type="button" class="case-assignee-remove" title="Отстрани" data-uid="<?= (int) $a['id'] ?>" data-name="<?= htmlspecialchars($a['name'], ENT_QUOTES) ?>">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                            <?php endif; ?>
+                        </span>
+                    <?php endforeach; ?>
+                    <?php if (!$case['assignees']): ?><p class="case-empty" id="assigneeEmpty">Не е доделено на никого.</p><?php endif; ?>
+                </div>
+                <?php if ($canManage): ?>
+                <form id="assigneeAddForm" class="case-assignee-add">
+                    <select id="assigneeAddSelect" class="field">
+                        <option value="">Додај вработен…</option>
+                        <?php foreach ($members as $m): if (in_array((int) $m['id'], $assignedIds, true)) continue; ?>
+                            <option value="<?= (int) $m['id'] ?>"><?= htmlspecialchars($m['name']) ?></option>
                         <?php endforeach; ?>
-                    </div>
-                <?php else: ?>
-                    <p class="case-empty">Не е доделено на никого.</p>
+                    </select>
+                    <button type="submit" class="btn-modal-save">Додај</button>
+                </form>
                 <?php endif; ?>
             </div>
 
@@ -316,16 +332,11 @@ if ($case) {
                 <!-- Задачи -->
                 <div class="case-tab-panel" data-tab="todos">
                     <div class="case-panel">
-                        <div class="todo-compose">
-                            <input type="text" id="todoInput" class="field todo-title-input" placeholder="Нова задача — пр. Поднеси тужба, Подготви документи…">
-                            <input type="text" id="todoDue" class="field todo-due-input" placeholder="Рок (опц.)" title="Рок (опц.)">
-                            <select id="todoAssignee" class="field todo-assignee-select" title="Доделено на (опц.)">
-                                <option value="">Никој</option>
-                                <?php foreach ($members as $m): ?>
-                                    <option value="<?= (int) $m['id'] ?>"><?= htmlspecialchars($m['name']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <button type="button" id="todoAddBtn" class="btn-modal-save">Додај</button>
+                        <div class="tab-toolbar">
+                            <button type="button" id="todoOpenBtn" class="btn-modal-save case-panel-action">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                                <span>Додај задача</span>
+                            </button>
                         </div>
                         <div id="todoList" class="todo-list"><p class="case-empty">Се вчитува…</p></div>
                     </div>
@@ -334,39 +345,91 @@ if ($case) {
                 <!-- Настани (рочишта · судења · состаноци) -->
                 <div class="case-tab-panel" data-tab="hearings">
                     <div class="case-panel">
-                        <div class="hearing-compose">
-                            <div class="hkind-chips" id="hearingKindChips">
-                                <button type="button" class="hkind-chip hkind--hearing is-active" data-kind="hearing">Рочиште</button>
-                                <button type="button" class="hkind-chip hkind--meeting" data-kind="meeting">Состанок</button>
-                                <button type="button" class="hkind-chip hkind--other" data-kind="other">Друго</button>
-                            </div>
-                            <input type="text" id="hearingTitle" class="field hearing-title-input" placeholder="Наслов — пр. Главна расправа, Подготвително рочиште…">
-                            <div class="hearing-compose-row">
-                                <input type="text" id="hearingDate" class="field hearing-date-input" placeholder="Датум" title="Датум">
-                                <div class="time-stepper hearing-time-input" id="hearingTimeField" title="Од">
-                                    <input type="hidden" id="hearingTime" class="time-value">
-                                    <input type="text" class="time-seg time-seg-h" inputmode="numeric" maxlength="2" placeholder="00">
-                                    <span class="time-sep">:</span>
-                                    <input type="text" class="time-seg time-seg-m" inputmode="numeric" maxlength="2" placeholder="00">
-                                </div>
-                                <span class="hearing-time-sep">до</span>
-                                <div class="time-stepper hearing-time-input" id="hearingEndTimeField" title="До">
-                                    <input type="hidden" id="hearingEndTime" class="time-value">
-                                    <input type="text" class="time-seg time-seg-h" inputmode="numeric" maxlength="2" placeholder="00">
-                                    <span class="time-sep">:</span>
-                                    <input type="text" class="time-seg time-seg-m" inputmode="numeric" maxlength="2" placeholder="00">
-                                </div>
-                                <input type="text" id="hearingLocation" class="field hearing-loc-input" placeholder="Локација / суд (опц.)">
-                            </div>
-                            <textarea id="hearingNote" class="field hearing-note-input" rows="2" placeholder="Белешка за настанот (опц.)"></textarea>
-                            <div class="hearing-compose-foot">
-                                <button type="button" id="hearingAddBtn" class="btn-modal-save">Додај настан</button>
-                            </div>
+                        <div class="tab-toolbar">
+                            <button type="button" id="hearingOpenBtn" class="btn-modal-save case-panel-action">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                                <span>Додај настан</span>
+                            </button>
                         </div>
                         <div id="hearingList" class="hearing-list"><p class="case-empty">Се вчитува…</p></div>
                     </div>
                 </div>
 
+            </div>
+        </div>
+
+        <!-- Modal: нова задача -->
+        <div class="modal-overlay" id="todoModal">
+            <div class="modal-box todo-modal-box" role="dialog" aria-modal="true" aria-labelledby="todoModalTitle">
+                <div class="modal-header">
+                    <div class="modal-title" id="todoModalTitle">Нова задача</div>
+                    <button type="button" class="modal-close" id="todoModalClose" aria-label="Затвори">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="todo-modal-compose">
+                    <input type="text" id="todoInput" class="field todo-title-input" placeholder="Нова задача — пр. Поднеси тужба, Подготви документи…">
+                    <div class="todo-modal-row">
+                        <input type="text" id="todoDue" class="field todo-due-input" placeholder="Рок (опц.)" title="Рок (опц.)">
+                        <select id="todoAssignee" class="field todo-assignee-select" title="Доделено на (опц.)">
+                            <option value="">Никој</option>
+                            <?php foreach ($case['assignees'] as $a): if ($isPraktikant && (int) $a['id'] !== $myId) continue; ?>
+                                <option value="<?= (int) $a['id'] ?>"><?= htmlspecialchars($a['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <textarea id="todoNote" class="field todo-note-input" rows="2" placeholder="Забелешка (опц.)"></textarea>
+                    <div class="hearing-compose-foot">
+                        <button type="button" id="todoCancelBtn" class="btn-modal-cancel">Откажи</button>
+                        <button type="button" id="todoAddBtn" class="btn-modal-save">Додај</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: нов настан -->
+        <div class="modal-overlay" id="hearingModal">
+            <div class="modal-box hearing-modal-box" role="dialog" aria-modal="true" aria-labelledby="hearingModalTitle">
+                <div class="modal-header">
+                    <div class="modal-title" id="hearingModalTitle">Нов настан</div>
+                    <button type="button" class="modal-close" id="hearingModalClose" aria-label="Затвори">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="hearing-compose">
+                    <div class="hkind-chips" id="hearingKindChips">
+                        <button type="button" class="hkind-chip hkind--hearing is-active" data-kind="hearing">Рочиште</button>
+                        <button type="button" class="hkind-chip hkind--meeting" data-kind="meeting">Состанок</button>
+                        <button type="button" class="hkind-chip hkind--other" data-kind="other">Друго</button>
+                    </div>
+                    <input type="text" id="hearingTitle" class="field hearing-title-input" placeholder="Наслов — пр. Главна расправа, Подготвително рочиште…">
+                    <div class="hearing-compose-row">
+                        <input type="text" id="hearingDate" class="field hearing-date-input" placeholder="Датум" title="Датум">
+                        <div class="time-stepper hearing-time-input" id="hearingTimeField" title="Од">
+                            <input type="hidden" id="hearingTime" class="time-value">
+                            <input type="text" class="time-seg time-seg-h" inputmode="numeric" maxlength="2" placeholder="00">
+                            <span class="time-sep">:</span>
+                            <input type="text" class="time-seg time-seg-m" inputmode="numeric" maxlength="2" placeholder="00">
+                        </div>
+                        <span class="hearing-time-sep">до</span>
+                        <div class="time-stepper hearing-time-input" id="hearingEndTimeField" title="До">
+                            <input type="hidden" id="hearingEndTime" class="time-value">
+                            <input type="text" class="time-seg time-seg-h" inputmode="numeric" maxlength="2" placeholder="00">
+                            <span class="time-sep">:</span>
+                            <input type="text" class="time-seg time-seg-m" inputmode="numeric" maxlength="2" placeholder="00">
+                        </div>
+                        <input type="text" id="hearingLocation" class="field hearing-loc-input" placeholder="Локација / суд (опц.)">
+                    </div>
+                    <textarea id="hearingNote" class="field hearing-note-input" rows="2" placeholder="Белешка за настанот (опц.)"></textarea>
+                    <div class="hearing-assignees-field">
+                        <span class="hearing-assignees-label">Додели настан на:</span>
+                        <div class="hearing-assignees" id="hearingAssignees"></div>
+                    </div>
+                    <div class="hearing-compose-foot">
+                        <button type="button" id="hearingCancelBtn" class="btn-modal-cancel">Откажи</button>
+                        <button type="button" id="hearingAddBtn" class="btn-modal-save">Додај настан</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -379,8 +442,6 @@ if ($case) {
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="js/app.js"></script>
     <?php if ($case && $canManage): ?>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/mk.js"></script>
     <script>
     $(function () {
         var API = 'api/case_api.php';
@@ -503,27 +564,61 @@ if ($case) {
                 }
             });
         });
+
+        // ---- Доделено на: add / remove an assignee inline ----
+        $('#assigneeAddForm').on('submit', function (e) {
+            e.preventDefault();
+            var uid = $('#assigneeAddSelect').val();
+            if (!uid) { toast('Избери вработен.', 'error'); return; }
+            $.post(API, { action: 'add_assignee', id: caseId, user_id: uid }, null, 'json').done(function (r) {
+                if (r.success) { toast(r.message, 'success'); setTimeout(function () { location.reload(); }, 350); }
+                else toast(r.message || 'Грешка.', 'error');
+            });
+        });
+
+        $('#assigneeList').on('click', '.case-assignee-remove', function () {
+            var uid = $(this).data('uid');
+            var name = $(this).data('name') || '';
+            confirmDialog({
+                title: 'Отстрани доделување', danger: true,
+                message: 'Отстрани го „' + name + '“ од предметот? Настаните доделени само нему ќе го изгубат тоа доделување.',
+                confirmText: 'Отстрани', cancelText: 'Откажи',
+                onConfirm: function () {
+                    $.post(API, { action: 'remove_assignee', id: caseId, user_id: uid }, null, 'json').done(function (r) {
+                        if (r.success) { toast(r.message, 'success'); setTimeout(function () { location.reload(); }, 350); }
+                        else toast(r.message || 'Грешка.', 'error');
+                    });
+                }
+            });
+        });
     });
     </script>
     <?php endif; ?>
 
     <?php if ($case): ?>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/mk.js"></script>
     <script>
     $(function () {
         /* ---- Date / time pickers (flatpickr, MK locale) ---- */
         var FP_LOCALE = (window.flatpickr && flatpickr.l10ns && flatpickr.l10ns.mk) ? flatpickr.l10ns.mk : 'default';
-        function fpDate(el, def) {
+        function fpDate(el, def, extra) {
             if (!el || !window.flatpickr) return null;
-            return flatpickr(el, {
+            var opts = {
                 locale: FP_LOCALE, dateFormat: 'Y-m-d', altInput: true, altFormat: 'd.m.Y',
                 altInputClass: el.className, allowInput: true, disableMobile: true,
                 defaultDate: def || el.value || null
-            });
+            };
+            if (extra) for (var k in extra) opts[k] = extra[k];
+            return flatpickr(el, opts);
         }
         function fpPad(n) { return (n < 10 ? '0' : '') + n; }
         var DEFAULT_TIME = '09:00';
-        var fpTodoDue   = fpDate(document.getElementById('todoDue'));
-        var fpHearingDt = fpDate(document.getElementById('hearingDate'));
+        // Pickers that live inside a modal render the calendar inline (static)
+        // so it stays within the modal's stacking context — otherwise the
+        // body-level calendar hides behind the backdrop in some browsers (Edge).
+        var fpTodoDue   = fpDate(document.getElementById('todoDue'), null, { static: true });
+        var fpHearingDt = fpDate(document.getElementById('hearingDate'), null, { static: true });
 
         /* ---- Custom 24h time stepper: two segments (HH / MM) you type into
            or nudge with arrow keys / mouse wheel — no dropdown list. The
@@ -629,6 +724,8 @@ if ($case) {
         var UID = window.FAKTA_UID || 0;
         var ROLE = window.FAKTA_ROLE || '';
         var MEMBERS = <?= json_encode(array_map(fn($m) => ['id' => (int) $m['id'], 'name' => $m['name']], $members), JSON_UNESCAPED_UNICODE) ?>;
+        var CASE_ASSIGNEES = <?= json_encode(array_map(fn($a) => ['id' => (int) $a['id'], 'name' => $a['name']], $case['assignees']), JSON_UNESCAPED_UNICODE) ?>;
+        var IS_PRAKTIKANT = ROLE === 'praktikant';
         var notes = [];
         var todos = [];
         var STATUSES = [
@@ -780,9 +877,14 @@ if ($case) {
         });
 
         /* ---------------- To-do (задачи) ---------------- */
+        // A to-do can only be assigned to someone доделен on this case (CASE_ASSIGNEES,
+        // kept fresh because inline assignee add/remove reloads the page).
         function memberOptions(sel) {
             var o = '<option value="">Никој</option>';
-            MEMBERS.forEach(function (m) { o += '<option value="' + m.id + '"' + (String(m.id) === String(sel) ? ' selected' : '') + '>' + esc(m.name) + '</option>'; });
+            CASE_ASSIGNEES.forEach(function (m) {
+                if (IS_PRAKTIKANT && String(m.id) !== String(UID)) return; // praktikant: self only
+                o += '<option value="' + m.id + '"' + (String(m.id) === String(sel) ? ' selected' : '') + '>' + esc(m.name) + '</option>';
+            });
             return o;
         }
         function dueLabel(d) { if (!d) return ''; var p = String(d).slice(0, 10).split('-'); return p.length < 3 ? '' : p[2] + '.' + p[1] + '.' + p[0]; }
@@ -836,13 +938,14 @@ if ($case) {
                     + 'завршено ' + when(t.completed_at) + '</span>';
             }
             var meta = (due || asg || done) ? ('<div class="todo-meta">' + due + asg + done + '</div>') : '';
+            var noteHtml = t.note ? ('<div class="todo-note">' + esc(t.note).replace(/\n/g, '<br>') + '</div>') : '';
             var actions = canEdit ? ('<span class="todo-actions">'
                 + '<button class="todo-edit" title="Уреди"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>'
                 + '<button class="todo-del" title="Избриши"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
                 + '</span>') : '';
             return '<div class="todo' + (closed ? ' is-closed' : '') + (status === 'done' ? ' is-done' : '') + '" data-id="' + t.id + '">'
                 + statusPill(status)
-                + '<div class="todo-main"><span class="todo-title">' + esc(t.title) + '</span>' + meta + '</div>'
+                + '<div class="todo-main"><span class="todo-title">' + esc(t.title) + '</span>' + meta + noteHtml + '</div>'
                 + actions + '</div>';
         }
         function renderTodos() {
@@ -850,7 +953,7 @@ if ($case) {
             var doneCount = todos.filter(function (t) { return t.status === 'done'; }).length;
             $('#tabTodos').text(todos.length);
             if (!todos.length) {
-                $('#todoList').html('<p class="case-empty">Сè уште нема задачи. Додај ја првата.</p>');
+                $('#todoList').html('<p class="case-empty">Нема задачи  за овој предмет.</p>');
                 return;
             }
             var isClosed = function (t) { return t.status === 'done' || t.status === 'declined'; };
@@ -878,21 +981,47 @@ if ($case) {
                 .fail(function () { $('#todoList').html('<p class="case-empty">Грешка при вчитување.</p>'); });
         }
 
+        // ---- Add-task modal: open / reset / close ----
+        function resetTodoForm() {
+            $('#todoInput').val(''); fpClear(fpTodoDue, '#todoDue'); $('#todoAssignee').val(''); $('#todoNote').val('');
+        }
+        function closeTodoModal() {
+            $('#todoModal').removeClass('open');
+            $('body').removeClass('modal-open');
+            document.removeEventListener('keydown', todoModalKey, true);
+        }
+        function todoModalKey(e) { if (e.key === 'Escape') closeTodoModal(); }
+        $('#todoOpenBtn').on('click', function () {
+            resetTodoForm();
+            $('#todoModal').addClass('open');
+            $('body').addClass('modal-open');
+            document.addEventListener('keydown', todoModalKey, true);
+            setTimeout(function () { $('#todoInput').focus(); }, 60);
+        });
+        $('#todoModalClose, #todoCancelBtn').on('click', closeTodoModal);
+        $('#todoModal').on('click', function (e) { if (e.target === this) closeTodoModal(); });
+
         $('#todoAddBtn').on('click', function () {
             var title = $('#todoInput').val().trim();
             if (!title) { toast('Внеси задача.', 'error'); return; }
             var $b = $(this).prop('disabled', true);
-            $.post(API, { action: 'add_todo', id: caseId, title: title, due_date: $('#todoDue').val(), assigned_to: $('#todoAssignee').val() || 0 }, null, 'json')
+            $.post(API, { action: 'add_todo', id: caseId, title: title, due_date: $('#todoDue').val(), assigned_to: $('#todoAssignee').val() || 0, note: $('#todoNote').val() }, null, 'json')
                 .done(function (r) {
-                    if (r.success) { $('#todoInput').val(''); fpClear(fpTodoDue, '#todoDue'); $('#todoAssignee').val(''); loadTodos(); }
+                    if (r.success) { closeTodoModal(); loadTodos(); }
                     else toast(r.message || 'Грешка.', 'error');
                 }).always(function () { $b.prop('disabled', false); });
         });
         $('#todoInput').on('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('#todoAddBtn').click(); } });
 
+        // Praktikant may only change status of tasks assigned to them.
+        function canChangeStatus(t) { return !IS_PRAKTIKANT || (t && String(t.assigned_to) === String(UID)); }
+
         // Status pill → open its menu (close any other first).
         $('#todoList').on('click', '.todo-status', function (e) {
             e.stopPropagation();
+            var $t = $(this).closest('.todo');
+            var t = todos.find(function (x) { return String(x.id) === String($t.data('id')); });
+            if (!canChangeStatus(t)) { toast('Можете да менувате статус само на задачи доделени на вас.', 'error'); return; }
             var $menu = $(this).siblings('.todo-status-menu');
             var wasOpen = !$menu.prop('hidden');
             $('.todo-status-menu').prop('hidden', true);
@@ -927,9 +1056,11 @@ if ($case) {
                 '<input type="text" class="field todo-edit-title">'
                 + '<div class="todo-edit-row"><input type="text" class="field todo-edit-due" placeholder="Рок (опц.)" value="' + (t.due_date ? String(t.due_date).slice(0, 10) : '') + '">'
                 + '<select class="field todo-edit-asg">' + memberOptions(t.assigned_to) + '</select></div>'
+                + '<textarea class="field todo-edit-note" rows="2" placeholder="Забелешка (опц.)"></textarea>'
                 + '<div class="note-compose-foot"><button class="btn-modal-cancel todo-cancel">Откажи</button><button class="btn-modal-save todo-save">Зачувај</button></div>'
             );
             fpDate($t.find('.todo-edit-due')[0]);
+            $t.find('.todo-edit-note').val(t.note || '');
             $t.find('.todo-edit-title').val(t.title).focus();
         });
         $('#todoList').on('click', '.todo-cancel', renderTodos);
@@ -937,7 +1068,7 @@ if ($case) {
             var $t = $(this).closest('.todo');
             var title = $t.find('.todo-edit-title').val().trim();
             if (!title) { toast('Внеси задача.', 'error'); return; }
-            $.post(API, { action: 'update_todo', todo_id: $t.data('id'), title: title, due_date: $t.find('.todo-edit-due').val(), assigned_to: $t.find('.todo-edit-asg').val() || 0 }, null, 'json')
+            $.post(API, { action: 'update_todo', todo_id: $t.data('id'), title: title, due_date: $t.find('.todo-edit-due').val(), assigned_to: $t.find('.todo-edit-asg').val() || 0, note: $t.find('.todo-edit-note').val() }, null, 'json')
                 .done(function (r) { if (r.success) loadTodos(); else toast(r.message || 'Грешка.', 'error'); });
         });
         $('#todoList').on('click', '.todo-del', function () {
@@ -971,6 +1102,29 @@ if ($case) {
         function kindOf(h) { return HKIND[h.kind] ? h.kind : 'hearing'; }
         var hearingKind = 'hearing'; // selected kind for the compose form
 
+        // ---- Event "Доделено на": toggle-chips of the case's assignees ----
+        function assigneeChipsHtml(selectedIds) {
+            if (!CASE_ASSIGNEES.length) {
+                return '<span class="hearing-assignees-empty">Прво доделете го предметот на вработен (горе).</span>';
+            }
+            var sel = {};
+            (selectedIds || []).forEach(function (id) { sel[String(id)] = true; });
+            return CASE_ASSIGNEES.map(function (a) {
+                var c = color(a.name);
+                return '<button type="button" class="hassignee-chip' + (sel[String(a.id)] ? ' is-on' : '') + '" data-uid="' + a.id + '">'
+                    + '<span class="hassignee-av" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(initials(a.name)) + '</span>'
+                    + esc(a.name) + '</button>';
+            }).join('');
+        }
+        function selectedAssignees($container) {
+            return $container.find('.hassignee-chip.is-on').map(function () { return $(this).data('uid'); }).get();
+        }
+        function allAssigneeIds() { return CASE_ASSIGNEES.map(function (a) { return a.id; }); }
+        // New events default to every case assignee selected; narrow as needed.
+        $('#hearingAssignees').html(assigneeChipsHtml(allAssigneeIds()));
+        // Toggle a chip on/off (works for compose + inline edit forms).
+        $(document).on('click', '.hassignee-chip', function () { $(this).toggleClass('is-on'); });
+
         function hearingHtml(h, isNext) {
             var canEdit = String(h.created_by) === String(UID) || ROLE === 'admin';
             var day = String(h.hearing_at).slice(8, 10);
@@ -984,6 +1138,10 @@ if ($case) {
                 + '</span>' : '';
             var dateStr = String(h.hearing_at).slice(0, 10);
             var timeRange = hTime(h.hearing_at) + (h.ends_at ? ' – ' + hTime(h.ends_at) : '');
+            var asg = (h.assignees || []).map(function (a) {
+                var c = color(a.name);
+                return '<span class="hearing-asg-pill"><span class="hearing-asg-av" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(initials(a.name)) + '</span>' + esc(a.name) + '</span>';
+            }).join('');
             return '<div class="hearing hearing--' + k + (isNext ? ' is-next' : '') + '" data-id="' + h.id + '" data-kind="' + k + '">'
                 + '<a class="hearing-date" href="kalendar.php?date=' + dateStr + '&view=day" title="Отвори во календарот">'
                 +   '<span class="hearing-day">' + day + '</span><span class="hearing-mon">' + mon + '</span></a>'
@@ -993,6 +1151,7 @@ if ($case) {
                 +     '<span class="hearing-time">🕐 ' + timeRange + (rel ? ' · ' + rel : '') + '</span>'
                 +     (h.location ? '<span class="hearing-loc">📍 ' + esc(h.location) + '</span>' : '')
                 +   '</div>'
+                +   (asg ? '<div class="hearing-asg-list">' + asg + '</div>' : '')
                 +   (h.note ? '<div class="hearing-note">' + nl2br(h.note) + '</div>' : '')
                 + '</div>' + actions + '</div>';
         }
@@ -1028,19 +1187,46 @@ if ($case) {
                 .fail(function () { $('#hearingList').html('<p class="case-empty">Грешка при вчитување.</p>'); });
         }
 
+        // ---- Add-event modal: open / reset / close ----
+        function resetHearingForm() {
+            $('#hearingKindChips .hkind-chip').removeClass('is-active');
+            $('#hearingKindChips .hkind-chip[data-kind="hearing"]').addClass('is-active');
+            hearingKind = 'hearing';
+            $('#hearingTitle').val(''); fpClear(fpHearingDt, '#hearingDate');
+            hearingEndTouched = false;
+            setTime('#hearingTime', DEFAULT_TIME); setTime('#hearingEndTime', addHour(DEFAULT_TIME));
+            $('#hearingLocation').val(''); $('#hearingNote').val('');
+            $('#hearingAssignees').html(assigneeChipsHtml(allAssigneeIds()));
+        }
+        function closeHearingModal() {
+            $('#hearingModal').removeClass('open');
+            $('body').removeClass('modal-open');
+            document.removeEventListener('keydown', hearingModalKey, true);
+        }
+        function hearingModalKey(e) { if (e.key === 'Escape') closeHearingModal(); }
+        $('#hearingOpenBtn').on('click', function () {
+            resetHearingForm();
+            $('#hearingModal').addClass('open');
+            $('body').addClass('modal-open');
+            document.addEventListener('keydown', hearingModalKey, true);
+            setTimeout(function () { $('#hearingTitle').focus(); }, 60);
+        });
+        $('#hearingModalClose, #hearingCancelBtn').on('click', closeHearingModal);
+        $('#hearingModal').on('click', function (e) { if (e.target === this) closeHearingModal(); });
+
         $('#hearingAddBtn').on('click', function () {
             var title = $('#hearingTitle').val().trim();
             var date = $('#hearingDate').val();
             var time = $('#hearingTime').val();
             var endTime = $('#hearingEndTime').val();
             if (!title || !date || !time) { toast('Внеси наслов, датум и време.', 'error'); return; }
+            var assignees = selectedAssignees($('#hearingAssignees'));
+            if (!assignees.length) { toast('Доделете го настанот барем на едно лице.', 'error'); return; }
             var $b = $(this).prop('disabled', true);
-            $.post(API, { action: 'add_hearing', id: caseId, kind: hearingKind, title: title, hearing_at: date + ' ' + time, ends_at: endTime ? date + ' ' + endTime : '', location: $('#hearingLocation').val().trim(), note: $('#hearingNote').val().trim() }, null, 'json')
+            $.post(API, { action: 'add_hearing', id: caseId, kind: hearingKind, title: title, hearing_at: date + ' ' + time, ends_at: endTime ? date + ' ' + endTime : '', location: $('#hearingLocation').val().trim(), note: $('#hearingNote').val().trim(), assignees: JSON.stringify(assignees) }, null, 'json')
                 .done(function (r) {
                     if (r.success) {
-                        $('#hearingTitle').val(''); fpClear(fpHearingDt, '#hearingDate');
-                        hearingEndTouched = false;
-                        setTime('#hearingTime', DEFAULT_TIME); setTime('#hearingEndTime', addHour(DEFAULT_TIME)); $('#hearingLocation').val(''); $('#hearingNote').val('');
+                        closeHearingModal();
                         loadHearings();
                     } else toast(r.message || 'Грешка.', 'error');
                 }).always(function () { $b.prop('disabled', false); });
@@ -1066,6 +1252,8 @@ if ($case) {
                 + '<div class="time-stepper hearing-time-input hearing-edit-end-time-field" title="До"><input type="hidden" class="time-value hearing-edit-end-time"><input type="text" class="time-seg time-seg-h" inputmode="numeric" maxlength="2" placeholder="00"><span class="time-sep">:</span><input type="text" class="time-seg time-seg-m" inputmode="numeric" maxlength="2" placeholder="00"></div>'
                 + '<input type="text" class="field hearing-edit-loc" placeholder="Локација (опц.)"></div>'
                 + '<textarea class="field hearing-edit-note" rows="2" placeholder="Белешка (опц.)"></textarea>'
+                + '<div class="hearing-assignees-field"><span class="hearing-assignees-label">Доделено на:</span>'
+                +   '<div class="hearing-assignees hearing-edit-assignees">' + assigneeChipsHtml((h.assignees || []).map(function (a) { return a.id; })) + '</div></div>'
                 + '<div class="note-compose-foot"><button class="btn-modal-cancel hearing-cancel">Откажи</button><button class="btn-modal-save hearing-save">Зачувај</button></div>'
                 + '</div>'
             );
@@ -1091,7 +1279,9 @@ if ($case) {
             var endTime = $h.find('.hearing-edit-end-time').val();
             var ekind = $h.find('.hearing-edit-kind .hkind-chip.is-active').data('kind') || 'hearing';
             if (!title || !date || !time) { toast('Внеси наслов, датум и време.', 'error'); return; }
-            $.post(API, { action: 'update_hearing', hearing_id: $h.data('id'), kind: ekind, title: title, hearing_at: date + ' ' + time, ends_at: endTime ? date + ' ' + endTime : '', location: $h.find('.hearing-edit-loc').val().trim(), note: $h.find('.hearing-edit-note').val().trim() }, null, 'json')
+            var assignees = selectedAssignees($h.find('.hearing-edit-assignees'));
+            if (!assignees.length) { toast('Доделете го настанот барем на едно лице.', 'error'); return; }
+            $.post(API, { action: 'update_hearing', hearing_id: $h.data('id'), kind: ekind, title: title, hearing_at: date + ' ' + time, ends_at: endTime ? date + ' ' + endTime : '', location: $h.find('.hearing-edit-loc').val().trim(), note: $h.find('.hearing-edit-note').val().trim(), assignees: JSON.stringify(assignees) }, null, 'json')
                 .done(function (r) { if (r.success) loadHearings(); else toast(r.message || 'Грешка.', 'error'); });
         });
         $('#hearingList').on('click', '.hearing-del', function () {
@@ -1116,13 +1306,15 @@ if ($case) {
             return (b / 1048576).toFixed(1) + ' MB';
         }
         function docHtml(g) {
+            // Praktikant may only delete documents they uploaded themselves.
+            var canDelete = !IS_PRAKTIKANT || String(g.uploaded_by) === String(UID);
             return '<div class="doc-row" data-id="' + g.id + '">'
                 + extBadge(g.ext)
                 + '<div class="doc-info"><div class="doc-name">' + esc(g.orig_name) + '</div>'
                 +   '<div class="doc-meta">' + fmtSize(g.size_bytes) + ' · ' + when(g.created_at) + (g.uploaded_by_name ? ' · ' + esc(g.uploaded_by_name) : '') + '</div></div>'
                 + '<div class="doc-actions">'
                 +   '<a class="btn-secondary doc-dl" href="' + API + '?action=download_document&file_id=' + g.id + '">Преземи</a>'
-                +   '<button class="doc-unlink" title="Избриши"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
+                +   (canDelete ? '<button class="doc-unlink" title="Избриши"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' : '')
                 + '</div></div>';
         }
         function renderDocs() {
@@ -1196,6 +1388,13 @@ if ($case) {
         loadHearings();
         loadTodos();
         loadNotes();
+
+        // Deep-link: ?tab=docs|notes|todos|hearings (used by notifications).
+        var wantTab = new URLSearchParams(window.location.search).get('tab');
+        if (wantTab) {
+            var $btn = $('#caseTabsNav .case-tab-btn[data-tab="' + wantTab + '"]');
+            if ($btn.length) $btn.trigger('click');
+        }
     });
     </script>
     <?php endif; ?>

@@ -3,7 +3,9 @@
    ------------------------------------------------------------
    window.toast(message, type, opts)
        type: 'success' | 'error' | 'info' (default 'info')
-       opts: { duration }
+       opts: { duration,
+               link:   { text, href },          // trailing navigation link
+               action: { text, onClick } }      // trailing button that runs a callback (e.g. Врати)
    window.confirmDialog({ title, message, confirmText, cancelText,
                           danger, onConfirm, onCancel })
    Loaded on every page (via includes/nav.php), before draft-workspace.js.
@@ -47,10 +49,24 @@
             a.addEventListener('click', function (e) { e.stopPropagation(); }); // don't dismiss before navigating
             msgEl.appendChild(a);
         }
+        // Optional trailing action button that runs a callback (e.g. undo).
+        if (opts.action && typeof opts.action.onClick === 'function') {
+            msgEl.appendChild(document.createTextNode(' '));
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'toast-link toast-action';
+            btn.textContent = opts.action.text || 'Врати';
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                opts.action.onClick();
+                remove();
+            });
+            msgEl.appendChild(btn);
+        }
         host.appendChild(el);
         requestAnimationFrame(function () { el.classList.add('toast--in'); });
 
-        var ttl = opts.duration || (opts.link ? 7000 : (type === 'error' ? 5000 : 3000));
+        var ttl = opts.duration || ((opts.link || opts.action) ? 7000 : (type === 'error' ? 5000 : 3000));
         var timer = setTimeout(remove, ttl);
         function remove() {
             clearTimeout(timer);

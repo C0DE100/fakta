@@ -25,6 +25,25 @@ $settingsUrl = function_exists('fakta_url') ? fakta_url('podesuvanja.php') : 'po
             </div>
             <?php endif; ?>
 
+            <div class="nav-notif" id="navNotif">
+                <button type="button" class="nav-bell" id="navBellBtn" aria-haspopup="true" aria-expanded="false" aria-label="Известувања">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+                    </svg>
+                    <span class="nav-bell-badge" id="navBellBadge" hidden>0</span>
+                </button>
+
+                <div class="nav-notif-menu" id="navNotifMenu" role="menu" aria-hidden="true">
+                    <div class="nav-notif-head">
+                        <span class="nav-notif-title">Известувања</span>
+                        <button type="button" class="nav-notif-readall" id="navNotifReadAll">Означи сите како прочитани</button>
+                    </div>
+                    <div class="nav-notif-list" id="navNotifList">
+                        <div class="nav-notif-empty">Се вчитува…</div>
+                    </div>
+                </div>
+            </div>
+
             <div class="nav-user" id="navUser">
                 <button type="button" class="nav-avatar" id="navAvatarBtn" aria-haspopup="true" aria-expanded="false" aria-label="Кориснички мени"
                         style="background:<?= htmlspecialchars($navColor['bg']) ?>;color:<?= htmlspecialchars($navColor['fg']) ?>;">
@@ -97,3 +116,5 @@ window.FAKTA_CSRF = <?= json_encode(function_exists('fakta_csrf') ? fakta_csrf()
 <script src="js/toast.js" defer></script>
 <!-- Global "Користи шаблон" workspace, docked on every page -->
 <script src="js/draft-workspace.js" defer></script>
+<!-- Notification bell (top-nav) -->
+<script src="js/notifications.js" defer></script>

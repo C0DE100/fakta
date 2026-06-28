@@ -467,57 +467,10 @@ $(document).ready(function () {
     }
 
     // ---- Dashboard ----
-
-    function loadDashboard() {
-        // Invoice stats + recent list are admin-only; the elements are only
-        // rendered for admins, so guard on their presence.
-        if ($('#statMonth').length) {
-            $.ajax({
-                url:      'api/invoice_api.php',
-                data:     { action: 'get_stats' },
-                dataType: 'json',
-                success: function (res) {
-                    if (!res.success) return;
-                    $('#statMonth').text(res.stats.this_month);
-                    $('#statSent').text(res.stats.sent);
-                    $('#statDraft').text(res.stats.draft);
-                    renderRecent(res.recent);
-                }
-            });
-        }
-
-        // Client count is available to every role.
-        $.ajax({
-            url:      'api/client_api.php',
-            data:     { action: 'get_all' },
-            dataType: 'json',
-            success: function (res) {
-                if (res.success) $('#statClients').text(res.data.length);
-            }
-        });
-    }
-
-    function renderRecent(invoices) {
-        if (!invoices || !invoices.length) {
-            $('#dashRecentList').html('<p class="list-msg" style="padding:0.75rem 0">Сè уште нема фактури.</p>');
-            return;
-        }
-        let html = '';
-        invoices.forEach(function (inv) {
-            html += '<div class="inv-row">'
-                + '<span class="inv-num">'    + escapeHtml(inv.number)      + '</span>'
-                + '<span class="inv-name">'   + escapeHtml(inv.client_name) + '</span>'
-                + '<span class="inv-date">'   + formatDate(inv.date)        + '</span>'
-                + '<span class="inv-status">' + statusTag(inv.status)       + '</span>'
-                + '</div>';
-        });
-        $('#dashRecentList').html(html);
-    }
+    // The home dashboard (events + to-dos grouped by case) is rendered by an
+    // inline script in index.php hitting api/case_api.php?action=dashboard.
 
     // Load on page ready — only on pages that have these sections
-    if ($('#dashboard').length) {
-        loadDashboard();
-    }
     if ($('#invoicesList').length) {
         loadInvoices(1);
         loadClientsFilter();
