@@ -28,9 +28,12 @@ if ($case) {
     $clientParties   = array_filter($case['parties'], fn($p) => $p['side'] === 'client');
     $opponentParties = array_filter($case['parties'], fn($p) => $p['side'] === 'opponent');
     $currentAdmin    = null;
+    $currentOfficial = null;
     foreach ($case['admin_numbers'] as $an) {
-        if ((int) $an['is_current'] === 1) { $currentAdmin = $an['admin_number']; break; }
+        if ((int) $an['is_current'] === 1) { $currentAdmin = $an['admin_number']; $currentOfficial = $an['official_person'] ?? null; break; }
     }
+    $statusLabels = ['active' => 'Активен', 'waiting' => 'Во чекање', 'archived' => 'Архивиран'];
+    $caseStatus   = !empty($case['archived_at']) ? 'archived' : (($case['status'] ?? 'active') === 'waiting' ? 'waiting' : 'active');
     // Employees for the to-do assignee dropdown.
     $mStmt = $GLOBALS['fakta_db']->prepare(
         "SELECT id, name FROM users WHERE company_id = :cid AND role IN ('admin','employee','praktikant') ORDER BY name"
@@ -79,11 +82,7 @@ if ($case) {
                 <div class="case-detail-hero-main">
                     <div class="case-detail-numwrap">
                         <span class="case-detail-numbadge"><?= htmlspecialchars($case['case_number']) ?></span>
-                        <?php if (!empty($case['archived_at'])): ?>
-                            <span class="case-badge case-badge--archived">Архивиран</span>
-                        <?php else: ?>
-                            <span class="case-badge case-badge--active">Активен</span>
-                        <?php endif; ?>
+                        <span class="case-badge case-badge--<?= $caseStatus ?>"><?= htmlspecialchars($statusLabels[$caseStatus]) ?></span>
                     </div>
                     <h1 class="case-detail-basis"><?= htmlspecialchars($case['basis'] ?? '—') ?></h1>
                     <p class="case-detail-sub">
@@ -108,30 +107,12 @@ if ($case) {
                             Врати од архива
                         </button>
                     <?php endif; ?>
+                    <button class="btn-secondary btn-secondary--danger" id="caseDeleteBtn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        Избриши
+                    </button>
                 </div>
                 <?php endif; ?>
-            </div>
-
-            <!-- Key facts -->
-            <div class="case-facts">
-                <div class="case-fact">
-                    <span class="case-fact-label">Состојба</span>
-                    <span class="case-fact-value">
-                        <?php if (!empty($case['archived_at'])): ?>
-                            <span class="case-status-dot case-status-dot--archived"></span>Архивиран
-                        <?php else: ?>
-                            <span class="case-status-dot case-status-dot--active"></span>Активен
-                        <?php endif; ?>
-                    </span>
-                </div>
-                <div class="case-fact">
-                    <span class="case-fact-label">Вредност</span>
-                    <span class="case-fact-value"><?= case_money($case['value_amount'], $case['value_currency']) ?: '—' ?></span>
-                </div>
-                <div class="case-fact">
-                    <span class="case-fact-label">Административен број</span>
-                    <span class="case-fact-value"><?= $currentAdmin ? htmlspecialchars($currentAdmin) : '—' ?></span>
-                </div>
             </div>
 
             <!-- Parties -->
@@ -185,6 +166,28 @@ if ($case) {
                         </div>
                     <?php endforeach; ?>
                     <?php if (!$opponentParties): ?><p class="case-empty">Нема спротивна странка.</p><?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Key facts -->
+            <div class="case-facts">
+                <?php if (!empty($case['archived_at'])): ?>
+                <div class="case-fact">
+                    <span class="case-fact-label">Архивиран на</span>
+                    <span class="case-fact-value"><?= htmlspecialchars(date('d.m.Y', strtotime($case['archived_at']))) ?></span>
+                </div>
+                <?php endif; ?>
+                <div class="case-fact">
+                    <span class="case-fact-label">Вредност</span>
+                    <span class="case-fact-value"><?= case_money($case['value_amount'], $case['value_currency']) ?: '—' ?></span>
+                </div>
+                <div class="case-fact">
+                    <span class="case-fact-label">Административен број</span>
+                    <span class="case-fact-value"><?= $currentAdmin ? htmlspecialchars($currentAdmin) : '—' ?></span>
+                </div>
+                <div class="case-fact">
+                    <span class="case-fact-label">Овластено лице</span>
+                    <span class="case-fact-value"><?= $currentOfficial ? htmlspecialchars($currentOfficial) : '—' ?></span>
                 </div>
             </div>
 
@@ -335,11 +338,24 @@ if ($case) {
                             <div class="hkind-chips" id="hearingKindChips">
                                 <button type="button" class="hkind-chip hkind--hearing is-active" data-kind="hearing">Рочиште</button>
                                 <button type="button" class="hkind-chip hkind--meeting" data-kind="meeting">Состанок</button>
+                                <button type="button" class="hkind-chip hkind--other" data-kind="other">Друго</button>
                             </div>
                             <input type="text" id="hearingTitle" class="field hearing-title-input" placeholder="Наслов — пр. Главна расправа, Подготвително рочиште…">
                             <div class="hearing-compose-row">
                                 <input type="text" id="hearingDate" class="field hearing-date-input" placeholder="Датум" title="Датум">
-                                <select id="hearingTime" class="field hearing-time-input" title="Време"></select>
+                                <div class="time-stepper hearing-time-input" id="hearingTimeField" title="Од">
+                                    <input type="hidden" id="hearingTime" class="time-value">
+                                    <input type="text" class="time-seg time-seg-h" inputmode="numeric" maxlength="2" placeholder="00">
+                                    <span class="time-sep">:</span>
+                                    <input type="text" class="time-seg time-seg-m" inputmode="numeric" maxlength="2" placeholder="00">
+                                </div>
+                                <span class="hearing-time-sep">до</span>
+                                <div class="time-stepper hearing-time-input" id="hearingEndTimeField" title="До">
+                                    <input type="hidden" id="hearingEndTime" class="time-value">
+                                    <input type="text" class="time-seg time-seg-h" inputmode="numeric" maxlength="2" placeholder="00">
+                                    <span class="time-sep">:</span>
+                                    <input type="text" class="time-seg time-seg-m" inputmode="numeric" maxlength="2" placeholder="00">
+                                </div>
                                 <input type="text" id="hearingLocation" class="field hearing-loc-input" placeholder="Локација / суд (опц.)">
                             </div>
                             <textarea id="hearingNote" class="field hearing-note-input" rows="2" placeholder="Белешка за настанот (опц.)"></textarea>
@@ -387,6 +403,19 @@ if ($case) {
             $.post(API, { action: 'unarchive', id: caseId }, null, 'json').done(function (r) {
                 if (r.success) { toast(r.message, 'success'); setTimeout(function () { location.reload(); }, 500); }
                 else toast(r.message || 'Грешка.', 'error');
+            });
+        });
+
+        $('#caseDeleteBtn').on('click', function () {
+            confirmDialog({
+                title: 'Бришење предмет', danger: true, message: 'Предметот ќе се премести во корпа. Продолжи?',
+                confirmText: 'Избриши', cancelText: 'Откажи',
+                onConfirm: function () {
+                    $.post(API, { action: 'delete', id: caseId }, null, 'json').done(function (r) {
+                        if (r.success) { toast(r.message, 'success'); setTimeout(function () { location.href = 'predmeti.php'; }, 500); }
+                        else toast(r.message || 'Грешка.', 'error');
+                    });
+                }
             });
         });
 
@@ -493,23 +522,97 @@ if ($case) {
         }
         function fpPad(n) { return (n < 10 ? '0' : '') + n; }
         var DEFAULT_TIME = '09:00';
-        // Fill a <select> with 15-min time slots; injects `selected` if off-grid.
-        function fillTimes(sel, selected) {
-            if (!sel) return;
-            selected = selected || '';
-            var has = false, html = '';
-            for (var m = 0; m < 24 * 60; m += 15) {
-                var v = fpPad(Math.floor(m / 60)) + ':' + fpPad(m % 60);
-                if (v === selected) has = true;
-                html += '<option value="' + v + '">' + v + '</option>';
-            }
-            if (selected && !has) html = '<option value="' + selected + '">' + selected + '</option>' + html;
-            sel.innerHTML = html;
-            if (selected) sel.value = selected;
-        }
         var fpTodoDue   = fpDate(document.getElementById('todoDue'));
         var fpHearingDt = fpDate(document.getElementById('hearingDate'));
-        fillTimes(document.getElementById('hearingTime'), DEFAULT_TIME);
+
+        /* ---- Custom 24h time stepper: two segments (HH / MM) you type into
+           or nudge with arrow keys / mouse wheel — no dropdown list. The
+           wrapper's hidden .time-value input stays the canonical "HH:MM"
+           field everything else here reads/writes via setTime()/.val(). ---- */
+        function makeTimeStepper($wrap) {
+            var $val = $wrap.find('.time-value');
+            var $h = $wrap.find('.time-seg-h');
+            var $m = $wrap.find('.time-seg-m');
+
+            function getParts() {
+                var v = ($val.val() || '00:00').split(':');
+                return { h: (parseInt(v[0], 10) || 0) % 24, m: (parseInt(v[1], 10) || 0) % 60 };
+            }
+            function paint() {
+                var p = getParts();
+                $h.val(fpPad(p.h)); $m.val(fpPad(p.m));
+            }
+            function commit(h, m) {
+                h = ((h % 24) + 24) % 24; m = ((m % 60) + 60) % 60;
+                $val.val(fpPad(h) + ':' + fpPad(m)).trigger('change');
+                paint();
+            }
+            function focusSel($seg) { $seg.trigger('focus'); if ($seg[0]) $seg[0].select(); }
+            function step(isHour, dir) {
+                var p = getParts();
+                if (isHour) commit(p.h + dir, p.m);
+                else { var m = p.m + dir, h = p.h; if (m > 59) { m = 0; h++; } else if (m < 0) { m = 59; h--; } commit(h, m); }
+            }
+            paint();
+
+            [[$h, true, $m], [$m, false, $h]].forEach(function (cfg) {
+                var $seg = cfg[0], isHour = cfg[1], $other = cfg[2];
+                $seg.on('focus', function () { var el = this; setTimeout(function () { el.select(); }, 0); });
+                $seg.on('keydown', function (e) {
+                    if (e.key === 'ArrowUp') { e.preventDefault(); step(isHour, e.shiftKey ? 5 : 1); }
+                    else if (e.key === 'ArrowDown') { e.preventDefault(); step(isHour, e.shiftKey ? -5 : -1); }
+                    else if (e.key === 'ArrowRight' && isHour) { focusSel($other); }
+                    else if (e.key === 'ArrowLeft' && !isHour) { focusSel($other); }
+                    else if (e.key === ':' && isHour) { e.preventDefault(); focusSel($other); }
+                    else if (e.key === 'Backspace' && !this.value) { focusSel($other); }
+                });
+                $seg.on('wheel', function (e) {
+                    e.preventDefault();
+                    var dir = e.originalEvent.deltaY < 0 ? 1 : -1;
+                    step(isHour, e.shiftKey ? dir * 5 : dir);
+                });
+                $seg.on('input', function () {
+                    var raw = $seg.val().replace(/\D/g, '').slice(0, 2);
+                    $seg.val(raw);
+                    if (!raw) return;
+                    var n = parseInt(raw, 10), maxFirst = isHour ? 2 : 5;
+                    if (raw.length === 2 || n > maxFirst) {
+                        var max = isHour ? 23 : 59;
+                        if (n > max) n = max;
+                        var p = getParts();
+                        if (isHour) commit(n, p.m); else commit(p.h, n);
+                        focusSel($other);
+                    }
+                });
+                $seg.on('blur', function () {
+                    var raw = $seg.val();
+                    if (raw === '') { paint(); return; }
+                    var n = parseInt(raw, 10), max = isHour ? 23 : 59;
+                    if (n > max) n = max;
+                    var p = getParts();
+                    if (isHour) commit(n, p.m); else commit(p.h, n);
+                });
+            });
+        }
+        // Set a time-stepper's canonical value + repaint its visible segments.
+        function setTime(sel, val) {
+            var $val = $(sel);
+            $val.val(val);
+            var $wrap = $val.closest('.time-stepper');
+            var p = (val || '00:00').split(':');
+            $wrap.find('.time-seg-h').val(p[0] || '00');
+            $wrap.find('.time-seg-m').val(p[1] || '00');
+        }
+
+        setTime('#hearingTime', DEFAULT_TIME);
+        function addHour(t) { var p = (t || DEFAULT_TIME).split(':'); var m = ((+p[0] * 60 + +p[1] + 60) % 1440); return fpPad(Math.floor(m / 60)) + ':' + fpPad(m % 60); }
+        setTime('#hearingEndTime', addHour(DEFAULT_TIME));
+        makeTimeStepper($('#hearingTimeField'));
+        makeTimeStepper($('#hearingEndTimeField'));
+        // Keep "до" one hour ahead of "од" until the user picks their own end time.
+        var hearingEndTouched = false;
+        $('#hearingTime').on('change', function () { if (!hearingEndTouched) setTime('#hearingEndTime', addHour(this.value)); });
+        $('#hearingEndTime').on('change', function () { hearingEndTouched = true; });
         function fpClear(inst, sel) { if (inst) inst.clear(); else $(sel).val(''); }
         // Destroy inline-edit pickers before a list re-render (their calendars
         // live on <body>, so they'd otherwise leak when the row is replaced).
@@ -726,7 +829,13 @@ if ($case) {
                 var c = color(t.assignee_name);
                 asg = '<span class="todo-chip todo-asg"><span class="todo-asg-av" style="background:' + c[0] + ';color:' + c[1] + '">' + esc(initials(t.assignee_name)) + '</span>' + esc(t.assignee_name) + '</span>';
             }
-            var meta = (due || asg) ? ('<div class="todo-meta">' + due + asg + '</div>') : '';
+            var done = '';
+            if (status === 'done' && t.completed_at) {
+                done = '<span class="todo-chip todo-done-at">'
+                    + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
+                    + 'завршено ' + when(t.completed_at) + '</span>';
+            }
+            var meta = (due || asg || done) ? ('<div class="todo-meta">' + due + asg + done + '</div>') : '';
             var actions = canEdit ? ('<span class="todo-actions">'
                 + '<button class="todo-edit" title="Уреди"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>'
                 + '<button class="todo-del" title="Избриши"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
@@ -858,7 +967,7 @@ if ($case) {
             return '';
         }
         var MK_MON = ['јан','фев','мар','апр','мај','јун','јул','авг','сеп','окт','ное','дек'];
-        var HKIND = { hearing: 'Рочиште', trial: 'Судење', meeting: 'Состанок' };
+        var HKIND = { hearing: 'Рочиште', trial: 'Судење', meeting: 'Состанок', other: 'Друго' };
         function kindOf(h) { return HKIND[h.kind] ? h.kind : 'hearing'; }
         var hearingKind = 'hearing'; // selected kind for the compose form
 
@@ -874,13 +983,14 @@ if ($case) {
                 + '<button class="hearing-del" title="Избриши"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
                 + '</span>' : '';
             var dateStr = String(h.hearing_at).slice(0, 10);
+            var timeRange = hTime(h.hearing_at) + (h.ends_at ? ' – ' + hTime(h.ends_at) : '');
             return '<div class="hearing hearing--' + k + (isNext ? ' is-next' : '') + '" data-id="' + h.id + '" data-kind="' + k + '">'
                 + '<a class="hearing-date" href="kalendar.php?date=' + dateStr + '&view=day" title="Отвори во календарот">'
                 +   '<span class="hearing-day">' + day + '</span><span class="hearing-mon">' + mon + '</span></a>'
                 + '<div class="hearing-main">'
                 +   '<div class="hearing-title">' + badge + esc(h.title) + (isNext ? '<span class="hearing-next-tag">следно</span>' : '') + '</div>'
                 +   '<div class="hearing-meta">'
-                +     '<span class="hearing-time">🕐 ' + hTime(h.hearing_at) + (rel ? ' · ' + rel : '') + '</span>'
+                +     '<span class="hearing-time">🕐 ' + timeRange + (rel ? ' · ' + rel : '') + '</span>'
                 +     (h.location ? '<span class="hearing-loc">📍 ' + esc(h.location) + '</span>' : '')
                 +   '</div>'
                 +   (h.note ? '<div class="hearing-note">' + nl2br(h.note) + '</div>' : '')
@@ -922,13 +1032,15 @@ if ($case) {
             var title = $('#hearingTitle').val().trim();
             var date = $('#hearingDate').val();
             var time = $('#hearingTime').val();
+            var endTime = $('#hearingEndTime').val();
             if (!title || !date || !time) { toast('Внеси наслов, датум и време.', 'error'); return; }
             var $b = $(this).prop('disabled', true);
-            $.post(API, { action: 'add_hearing', id: caseId, kind: hearingKind, title: title, hearing_at: date + ' ' + time, location: $('#hearingLocation').val().trim(), note: $('#hearingNote').val().trim() }, null, 'json')
+            $.post(API, { action: 'add_hearing', id: caseId, kind: hearingKind, title: title, hearing_at: date + ' ' + time, ends_at: endTime ? date + ' ' + endTime : '', location: $('#hearingLocation').val().trim(), note: $('#hearingNote').val().trim() }, null, 'json')
                 .done(function (r) {
                     if (r.success) {
                         $('#hearingTitle').val(''); fpClear(fpHearingDt, '#hearingDate');
-                        $('#hearingTime').val(DEFAULT_TIME); $('#hearingLocation').val(''); $('#hearingNote').val('');
+                        hearingEndTouched = false;
+                        setTime('#hearingTime', DEFAULT_TIME); setTime('#hearingEndTime', addHour(DEFAULT_TIME)); $('#hearingLocation').val(''); $('#hearingNote').val('');
                         loadHearings();
                     } else toast(r.message || 'Грешка.', 'error');
                 }).always(function () { $b.prop('disabled', false); });
@@ -941,7 +1053,7 @@ if ($case) {
             if (!h) return;
             $h.addClass('editing');
             var ek = kindOf(h);
-            var chips = ['hearing', 'meeting'].map(function (kk) {
+            var chips = ['hearing', 'meeting', 'other'].map(function (kk) {
                 return '<button type="button" class="hkind-chip hkind--' + kk + (kk === ek ? ' is-active' : '') + '" data-kind="' + kk + '">' + HKIND[kk] + '</button>';
             }).join('');
             $h.html(
@@ -949,14 +1061,19 @@ if ($case) {
                 + '<div class="hkind-chips hearing-edit-kind">' + chips + '</div>'
                 + '<input type="text" class="field hearing-edit-title">'
                 + '<div class="hearing-compose-row"><input type="text" class="field hearing-edit-date" placeholder="Датум" value="' + String(h.hearing_at).slice(0, 10) + '">'
-                + '<select class="field hearing-edit-time"></select>'
+                + '<div class="time-stepper hearing-time-input hearing-edit-time-field" title="Од"><input type="hidden" class="time-value hearing-edit-time"><input type="text" class="time-seg time-seg-h" inputmode="numeric" maxlength="2" placeholder="00"><span class="time-sep">:</span><input type="text" class="time-seg time-seg-m" inputmode="numeric" maxlength="2" placeholder="00"></div>'
+                + '<span class="hearing-time-sep">до</span>'
+                + '<div class="time-stepper hearing-time-input hearing-edit-end-time-field" title="До"><input type="hidden" class="time-value hearing-edit-end-time"><input type="text" class="time-seg time-seg-h" inputmode="numeric" maxlength="2" placeholder="00"><span class="time-sep">:</span><input type="text" class="time-seg time-seg-m" inputmode="numeric" maxlength="2" placeholder="00"></div>'
                 + '<input type="text" class="field hearing-edit-loc" placeholder="Локација (опц.)"></div>'
                 + '<textarea class="field hearing-edit-note" rows="2" placeholder="Белешка (опц.)"></textarea>'
                 + '<div class="note-compose-foot"><button class="btn-modal-cancel hearing-cancel">Откажи</button><button class="btn-modal-save hearing-save">Зачувај</button></div>'
                 + '</div>'
             );
             fpDate($h.find('.hearing-edit-date')[0]);
-            fillTimes($h.find('.hearing-edit-time')[0], String(h.hearing_at).slice(11, 16));
+            $h.find('.hearing-edit-time').val(String(h.hearing_at).slice(11, 16));
+            $h.find('.hearing-edit-end-time').val(h.ends_at ? String(h.ends_at).slice(11, 16) : addHour(String(h.hearing_at).slice(11, 16)));
+            makeTimeStepper($h.find('.hearing-edit-time-field'));
+            makeTimeStepper($h.find('.hearing-edit-end-time-field'));
             $h.find('.hearing-edit-title').val(h.title).focus();
             $h.find('.hearing-edit-loc').val(h.location || '');
             $h.find('.hearing-edit-note').val(h.note || '');
@@ -971,9 +1088,10 @@ if ($case) {
             var title = $h.find('.hearing-edit-title').val().trim();
             var date = $h.find('.hearing-edit-date').val();
             var time = $h.find('.hearing-edit-time').val();
+            var endTime = $h.find('.hearing-edit-end-time').val();
             var ekind = $h.find('.hearing-edit-kind .hkind-chip.is-active').data('kind') || 'hearing';
             if (!title || !date || !time) { toast('Внеси наслов, датум и време.', 'error'); return; }
-            $.post(API, { action: 'update_hearing', hearing_id: $h.data('id'), kind: ekind, title: title, hearing_at: date + ' ' + time, location: $h.find('.hearing-edit-loc').val().trim(), note: $h.find('.hearing-edit-note').val().trim() }, null, 'json')
+            $.post(API, { action: 'update_hearing', hearing_id: $h.data('id'), kind: ekind, title: title, hearing_at: date + ' ' + time, ends_at: endTime ? date + ' ' + endTime : '', location: $h.find('.hearing-edit-loc').val().trim(), note: $h.find('.hearing-edit-note').val().trim() }, null, 'json')
                 .done(function (r) { if (r.success) loadHearings(); else toast(r.message || 'Грешка.', 'error'); });
         });
         $('#hearingList').on('click', '.hearing-del', function () {

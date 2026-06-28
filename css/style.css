@@ -4375,6 +4375,7 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
     padding: 0.12rem 0.45rem; border-radius: 0.35rem;
 }
 .case-badge--archived { background: #f3e8d6; color: #92600a; }
+.case-badge--waiting { background: #fef3c7; color: #92400e; }
 
 .case-parties { display: flex; flex-direction: column; gap: 0.3rem; }
 .case-party { display: flex; align-items: baseline; gap: 0.4rem; min-width: 0; }
@@ -4403,6 +4404,8 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
     display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
     padding-top: 0.65rem; border-top: 1px solid #f0ece4;
 }
+.case-foot-block--assignees { display: flex; align-items: center; gap: 0.4rem; }
+.case-foot-block--assignees .case-fld-l { font-size: 0.64rem; }
 .case-assignees { display: flex; align-items: center; }
 .case-assignee-av {
     width: 1.5rem; height: 1.5rem; border-radius: 9999px;
@@ -4468,6 +4471,43 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .case-party-row { display: flex; gap: 0.4rem; align-items: center; }
 .case-party-row .party-client { flex: 1 1 auto; min-width: 0; }
 .case-party-row .party-role   { flex: 0 0 11rem; }
+.party-client-search-wrap { position: relative; flex: 1 1 auto; min-width: 0; }
+.party-client-dropdown {
+    position: absolute; top: calc(100% + 0.25rem); left: 0; right: 0; z-index: 30;
+    background: #fff; border: 1px solid #e7e1d8; border-radius: 0.6rem;
+    box-shadow: 0 8px 20px rgba(28, 25, 23, 0.12); max-height: 14rem; overflow-y: auto; padding: 0.3rem;
+}
+.party-client-drop-new {
+    display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; font-weight: 600;
+    color: var(--accent); padding: 0.45rem 0.6rem; border-radius: 0.4rem; cursor: pointer;
+    border-bottom: 1px solid #efe9df; margin-bottom: 0.2rem;
+}
+.party-client-drop-new:hover { background: var(--accent-soft); }
+.party-client-drop-item { padding: 0.45rem 0.6rem; border-radius: 0.4rem; font-size: 0.84rem; color: #1c1917; cursor: pointer; }
+.party-client-drop-item:hover { background: var(--accent-soft); color: var(--accent); }
+[data-theme="dark"] .party-client-dropdown { background: #212125; border-color: #3c3c44; }
+[data-theme="dark"] .party-client-drop-new { border-bottom-color: #34343c; }
+[data-theme="dark"] .party-client-drop-item { color: #ededf0; }
+
+/* Custom 24h time stepper: two type-or-scroll-or-arrow segments (HH:MM),
+   styled as one field. No dropdown/list — fast keyboard & scroll entry. */
+.time-stepper {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.15rem;
+    background: #ffffff; border: 1px solid #d9d2c7; border-radius: 0.5rem;
+    padding: 0.625rem 0.5rem; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.time-stepper:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.time-seg {
+    width: 1.5rem; border: none; background: transparent; padding: 0; margin: 0;
+    font-size: 0.875rem; font-family: inherit; color: #1c1917; text-align: center;
+    font-variant-numeric: tabular-nums; cursor: default;
+}
+.time-seg:focus { outline: none; background: var(--accent-soft); border-radius: 0.25rem; }
+.time-seg::placeholder { color: #a8a29e; }
+.time-sep { color: #a8a29e; font-weight: 600; }
+[data-theme="dark"] .time-stepper { background: #2b2b31; border-color: #3c3c44; }
+[data-theme="dark"] .time-seg { color: #ededf0; }
+[data-theme="dark"] .time-seg::placeholder { color: #505059; }
 .case-party-row--opp .party-name   { flex: 1 1 auto; min-width: 0; }
 .case-party-row--opp .party-role   { flex: 0 0 11rem; }
 .case-party-group { display: flex; flex-direction: column; gap: 0.35rem; }
@@ -4620,6 +4660,23 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 
 /* Modal sizing + explanatory fields */
 .modal-box--wide { max-width: 52rem; }
+.modal-box--xwide { max-width: 64rem; }
+
+/* Custom scrollbar — steel-blue accent, on tone with the rest of the app.
+   Firefox via scrollbar-color/width; WebKit/Blink via ::-webkit-scrollbar. */
+.modal-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent-border) transparent;
+}
+.modal-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.modal-scroll::-webkit-scrollbar-track { background: transparent; }
+.modal-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--accent-border);
+    border-radius: 9999px;
+    border: 2px solid #ffffff;
+}
+.modal-scroll::-webkit-scrollbar-thumb:hover { background-color: var(--accent); }
+[data-theme="dark"] .modal-scroll::-webkit-scrollbar-thumb { border-color: #212125; }
 
 .case-section-head > div { display: flex; flex-direction: column; gap: 0.15rem; }
 .case-section-desc {
@@ -4881,6 +4938,7 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .case-card-num-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .case-card-num .case-num { color: #ffffff; }
 .case-card-num .case-badge--active { background: rgba(255, 255, 255, 0.16); color: #d7f5e3; }
+.case-card-num .case-badge--waiting { background: rgba(255, 255, 255, 0.16); color: #fde9b8; }
 .case-card-num .case-badge--archived { background: rgba(255, 255, 255, 0.16); color: #f3e8d6; }
 .case-num { font-size: 1.2rem; font-weight: 800; color: var(--accent); letter-spacing: 0.01em; }
 
@@ -4926,7 +4984,16 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .case-num-sm { font-weight: 800; color: var(--accent); font-size: 0.92rem; }
 .case-cell-parties { display: flex; flex-direction: column; gap: 0.15rem; white-space: normal; overflow: visible; }
 .case-cell-parties strong { font-weight: 600; color: #1c1917; }
-.case-party-stack-line { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.case-party-stack-line {
+    display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    padding-left: 0.5rem; border-left: 2px solid transparent;
+}
+/* No textual "Клиент/Спротивна страна" label — a colour cue on the left
+   edge keeps the two groups visually distinct even without a својство role. */
+.case-party-stack-line--client { border-left-color: var(--accent-border); }
+.case-party-stack-line--opponent { border-left-color: #d6d3d1; color: #78716c; }
+.case-party-stack-line--client + .case-party-stack-line--opponent { margin-top: 0.3rem; }
+[data-theme="dark"] .case-party-stack-line--opponent { border-left-color: #44444c; color: #9a9aa2; }
 .case-cell-value { font-weight: 600; }
 
 .case-cell-assignees { display: flex; white-space: normal; overflow: visible; }
@@ -5043,7 +5110,6 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 /* Compact variant — used for "Додели предмет на" so it doesn't dominate the modal */
 .case-block--compact { padding: 0.7rem 1.2rem; }
 .case-block--compact .case-block-head { margin-bottom: 0.5rem; }
-.case-block--compact .case-block-title { font-size: 0.86rem; }
 .assignee-picker--compact .assignee-input-wrap .field { padding-top: 0.45rem; padding-bottom: 0.45rem; }
 
 /* Dark mode */
@@ -5124,6 +5190,7 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 }
 .todo-due.is-overdue { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; font-weight: 600; }
 .todo.is-done .todo-due.is-overdue { background: #f5f1ea; border-color: #ece6dd; color: #a8a29e; font-weight: 500; }
+.todo-done-at { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
 .todo-asg-av {
     width: 1.1rem; height: 1.1rem; border-radius: 9999px; display: inline-flex;
     align-items: center; justify-content: center; font-size: 0.5rem; font-weight: 700; text-transform: uppercase;
@@ -5271,7 +5338,7 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
    Рочишта (hearings) — detail panel + card surfacing
    ================================================ */
 .hearing-compose { margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.hearing-compose-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.hearing-compose-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
 .hearing-loc-input { flex: 1 1 9rem; min-width: 0; }
 .hearing-compose-row .btn-modal-save { flex-shrink: 0; }
 
@@ -5309,22 +5376,51 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 
 /* Next-hearing chip on the grid card */
 .case-next-hearing {
-    display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: #92600a;
-    background: #fdf6e3; border: 1px solid #f0d98a; border-radius: 0.5rem; padding: 0.35rem 0.6rem;
+    display: flex; align-items: center; gap: 0.45rem; font-size: 0.78rem; color: #57534e;
+    background: #faf7f3; border: 1px solid #f0ece4; border-radius: 0.5rem; padding: 0.35rem 0.6rem;
+    flex-wrap: wrap;
 }
-.case-next-hearing strong { font-weight: 700; }
+.case-next-hearing > svg { flex-shrink: 0; }
+.case-next-hearing .hkind-badge { flex-shrink: 0; }
+.case-next-hearing-text { white-space: normal; }
+.case-next-hearing-label { white-space: nowrap; }
+.case-next-hearing strong { font-weight: 700; color: #1c1917; }
+
+.case-next-hearing--hearing { background: #fdf6e3; border-color: #f0d98a; }
+.case-next-hearing--meeting { background: #f5f3ff; border-color: #ddd6fe; }
+.case-next-hearing--other   { background: #f0fdfa; border-color: #99f6e4; }
+
+[data-theme="dark"] .case-next-hearing { background: #212125; border-color: #2b2b31; color: #c8c8d0; }
+[data-theme="dark"] .case-next-hearing strong { color: #ededf0; }
+[data-theme="dark"] .case-next-hearing--hearing { background: #2e2410; border-color: #5c4a18; }
+[data-theme="dark"] .case-next-hearing--meeting { background: #2a1f3d; border-color: #46336b; }
+[data-theme="dark"] .case-next-hearing--other   { background: #0f2e2b; border-color: #195e54; }
 
 [data-theme="dark"] .hearing { border-bottom-color: #2b2b31; }
 [data-theme="dark"] .hearing-date { background: #2b2b31; border-color: #3c3c44; }
 [data-theme="dark"] .hearing-day { color: #ededf0; }
 [data-theme="dark"] .hearing-title { color: #ededf0; }
 [data-theme="dark"] .hearing-edit, [data-theme="dark"] .hearing-del { background: #2b2b31; border-color: #3c3c44; color: #9898a6; }
-[data-theme="dark"] .case-next-hearing { background: #2e2410; border-color: #5c4a18; color: #e0b252; }
 
 /* ================================================
    Event kind chips + badges (рочиште/судење/состанок)
    Shared by the case "Настани" tab and the calendar.
    ================================================ */
+.hearing-time-sep { font-size: 0.78rem; color: #a8a29e; flex: 0 0 auto; }
+
+.case-color-picker { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.case-color-swatch {
+    width: 1.8rem; height: 1.8rem; border-radius: 9999px; border: 2px solid transparent;
+    cursor: pointer; padding: 0; box-shadow: 0 0 0 1px rgba(28, 25, 23, 0.08) inset;
+}
+.case-color-swatch.is-active { border-color: #1c1917; }
+.case-color-swatch--none {
+    background: #fff; border: 1.5px dashed #d6cfc4; color: #a8a29e;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 0.95rem;
+}
+.case-color-swatch--none.is-active { border-color: var(--accent); color: var(--accent); }
+[data-theme="dark"] .case-color-swatch--none { background: #212125; border-color: #3c3c44; }
+
 .hkind-chips { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .hkind-chip {
     font-size: 0.78rem; padding: 0.3rem 0.7rem; border-radius: 999px; cursor: pointer;
@@ -5335,6 +5431,7 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .hkind-chip.hkind--trial.is-active   { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
 .hkind-chip.hkind--meeting.is-active { background: #f5f3ff; border-color: #ddd6fe; color: #6d28d9; }
 .hkind-chip.hkind--other.is-active   { background: #f0fdfa; border-color: #99f6e4; color: #0f766e; }
+.hkind-chip.hkind--private.is-active { background: #f1f5f9; border-color: #cbd5e1; color: #334155; }
 
 .hkind-badge {
     font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
@@ -5344,16 +5441,19 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .hkind-badge.hkind--trial   { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
 .hkind-badge.hkind--meeting { background: #f5f3ff; border-color: #ddd6fe; color: #6d28d9; }
 .hkind-badge.hkind--other   { background: #f0fdfa; border-color: #99f6e4; color: #0f766e; }
+.hkind-badge.hkind--private { background: #f1f5f9; border-color: #cbd5e1; color: #334155; }
 
 [data-theme="dark"] .hkind-chip { background: #212125; border-color: #3c3c44; color: #9898a6; }
 [data-theme="dark"] .hkind-chip.hkind--hearing.is-active { background: #2e2410; border-color: #5c4a18; color: #e0b252; }
 [data-theme="dark"] .hkind-chip.hkind--trial.is-active   { background: #3a1a1a; border-color: #6e2a2a; color: #f87171; }
 [data-theme="dark"] .hkind-chip.hkind--meeting.is-active { background: #2a1f3d; border-color: #46336b; color: #c4b5fd; }
 [data-theme="dark"] .hkind-chip.hkind--other.is-active   { background: #0f2e2b; border-color: #195e54; color: #5eead4; }
+[data-theme="dark"] .hkind-chip.hkind--private.is-active { background: #2b2b31; border-color: #4b5563; color: #cbd5e1; }
 [data-theme="dark"] .hkind-badge.hkind--hearing { background: #2e2410; border-color: #5c4a18; color: #e0b252; }
 [data-theme="dark"] .hkind-badge.hkind--trial   { background: #3a1a1a; border-color: #6e2a2a; color: #f87171; }
 [data-theme="dark"] .hkind-badge.hkind--meeting { background: #2a1f3d; border-color: #46336b; color: #c4b5fd; }
 [data-theme="dark"] .hkind-badge.hkind--other   { background: #0f2e2b; border-color: #195e54; color: #5eead4; }
+[data-theme="dark"] .hkind-badge.hkind--private { background: #2b2b31; border-color: #4b5563; color: #cbd5e1; }
 
 /* ================================================
    Calendar page (kalendar.php)
@@ -5365,6 +5465,7 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .cal-dot.hkind--trial   { background: #dc2626; }
 .cal-dot.hkind--meeting { background: #7c3aed; }
 .cal-dot.hkind--other   { background: #0d9488; }
+.cal-dot.hkind--private { background: #475569; }
 
 .cal-toolbar { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.85rem; flex-wrap: wrap; }
 .cal-nav { display: inline-flex; align-items: center; gap: 0.35rem; }
@@ -5407,11 +5508,25 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .cal-jump-month.is-now { border-color: var(--accent-border); color: var(--accent); }
 .cal-jump-month.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+/* Day-view jump: grid of days in the current month instead of months */
+.cal-jump.is-daymode { width: 18rem; }
+.cal-jump-grid--days { grid-template-columns: repeat(7, 1fr); }
+.cal-jump-day {
+    padding: 0.4rem 0.2rem; font-size: 0.75rem; font-weight: 600;
+    border: 1px solid transparent; border-radius: 0.4rem; background: #f5f1ea; color: #57534e; cursor: pointer; transition: all 0.12s;
+}
+.cal-jump-day.is-pad { background: none; cursor: default; }
+.cal-jump-day:hover { background: var(--accent-soft); color: var(--accent); }
+.cal-jump-day.is-now { border-color: var(--accent-border); color: var(--accent); }
+.cal-jump-day.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
 [data-theme="dark"] .cal-title:hover { background: #232328; }
 [data-theme="dark"] .cal-jump { background: #1c1c20; border-color: #34343c; box-shadow: 0 14px 36px rgba(0,0,0,0.5); }
 [data-theme="dark"] .cal-jump-year { color: #ededf0; }
 [data-theme="dark"] .cal-jump-month { background: #26262b; color: #d6d6dd; }
 [data-theme="dark"] .cal-jump-month.is-active { background: var(--accent); border-color: var(--accent); color: #1c1c20; }
+[data-theme="dark"] .cal-jump-day { background: #26262b; color: #d6d6dd; }
+[data-theme="dark"] .cal-jump-day.is-active { background: var(--accent); border-color: var(--accent); color: #1c1c20; }
 
 .cal-wrap { overflow: hidden; }
 /* Fixed 7-equal columns regardless of content (minmax(0,1fr) stops long event
@@ -5432,7 +5547,11 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .cal-cell:hover { background: #fbf9f5; }
 .cal-cell.is-other { background: #faf8f4; }
 .cal-cell.is-other .cal-cell-day { color: #c8c2ba; }
-.cal-cell.is-weekend:not(.is-other) { background: #fcfaf6; }
+/* Weekends read as "time off": a cool tint that stands apart from the warm weekday cream. */
+.cal-cell.is-weekend { background: #eef2f9; }
+.cal-cell.is-weekend.is-other { background: #f2f4f9; }
+.cal-cell.is-weekend:hover { background: #e7edf6; }
+.cal-wd.is-weekend { color: #7d8bb0; }
 .cal-cell-head { display: flex; align-items: center; justify-content: space-between; }
 .cal-cell-add {
     width: 1.25rem; height: 1.25rem; border-radius: 0.3rem; border: none; background: none;
@@ -5458,6 +5577,7 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .cal-ev.hkind--trial,   .cal-dayv-ev.hkind--trial   { background: #fef2f2; border-left-color: #dc2626; }
 .cal-ev.hkind--meeting, .cal-dayv-ev.hkind--meeting { background: #f5f3ff; border-left-color: #7c3aed; }
 .cal-ev.hkind--other,   .cal-dayv-ev.hkind--other   { background: #f0fdfa; border-left-color: #0d9488; }
+.cal-ev.hkind--private, .cal-dayv-ev.hkind--private { background: #f1f5f9; border-left-color: #475569; }
 .cal-ev-time { font-weight: 700; flex-shrink: 0; }
 .cal-ev-title { min-width: 0; flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-more {
@@ -5511,14 +5631,63 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .cal-day-ev.hkind-border--trial   { border-left-color: #dc2626; }
 .cal-day-ev.hkind-border--meeting { border-left-color: #7c3aed; }
 .cal-day-ev.hkind-border--other   { border-left-color: #0d9488; }
+.cal-day-ev.hkind-border--private { border-left-color: #475569; }
 .cal-day-ev-top { display: flex; align-items: center; gap: 0.5rem; }
 .cal-day-ev-time { font-size: 0.78rem; font-weight: 700; color: #57534e; }
 .cal-day-ev-title { font-size: 0.88rem; font-weight: 600; color: #1c1917; margin-top: 0.25rem; }
 .cal-day-ev-meta { font-size: 0.75rem; color: #78716c; margin-top: 0.15rem; }
 
 /* Employee filter in the toolbar */
-.cal-filter { margin-left: auto; display: inline-flex; align-items: center; gap: 0.4rem; color: #a8a29e; }
+.cal-filter { display: inline-flex; align-items: center; gap: 0.4rem; color: #a8a29e; }
 .cal-filter-select { width: auto; min-width: 11rem; font-size: 0.82rem; padding: 0.35rem 0.6rem; cursor: pointer; }
+
+/* "Список на настани" toolbar button + its modal */
+.cal-list-btn {
+    display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; font-weight: 600;
+    padding: 0.35rem 0.85rem; border-radius: 0.5rem; background: #fff; border: 1px solid #e7e1d8;
+    color: #57534e; cursor: pointer;
+}
+.cal-list-btn:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-border); }
+.cal-pop-card--wide { width: min(32rem, 94vw); }
+/* Shown without an anchor tile (see openList()) — centered with CSS instead of
+   showPop's measure-then-clamp logic, so it stays correctly placed regardless of
+   how tall the AJAX-loaded list is. Its own keyframes keep the translate(-50%,-50%)
+   centering throughout the entrance animation (the default calPopIn animates a plain
+   translateY, which would override the centering and make the card flash off-center). */
+#calListModal .cal-pop-card { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); animation: calPopInCenter 0.12s ease; }
+@keyframes calPopInCenter { from { opacity: 0; transform: translate(-50%, calc(-50% - 4px)); } to { opacity: 1; transform: translate(-50%, -50%); } }
+.cal-list-count {
+    display: inline-block; margin-left: 0.5rem; padding: 0.05rem 0.45rem; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent); font-size: 0.72rem; font-weight: 700;
+}
+.cal-list-count:empty { display: none; }
+.cal-list-back {
+    display: inline-flex; align-items: center; gap: 0.2rem; background: none; border: none; cursor: pointer;
+    font-family: inherit; font-size: 0.85rem; font-weight: 600; color: #57534e; padding: 0;
+}
+.cal-list-back:hover { color: var(--accent); }
+.cal-list-filters { padding: 0.85rem 1.1rem 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.cal-list-presets { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.cal-list-preset {
+    font-size: 0.78rem; font-weight: 600; padding: 0.3rem 0.75rem; border-radius: 999px;
+    background: #f5f1ea; border: 1px solid #e7e1d8; color: #57534e; cursor: pointer;
+}
+.cal-list-preset:hover { color: var(--accent); border-color: var(--accent-border); }
+.cal-list-preset.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cal-list-range { display: flex; align-items: center; gap: 0.5rem; }
+.cal-list-range .cal-form-date { flex: 1 1 0; min-width: 0; width: auto; text-align: center; }
+.cal-list-range-arrow { flex: 0 0 auto; color: #a8a29e; font-weight: 600; }
+#calListAssignee { width: 100%; min-width: 0; }
+.cal-list-body { max-height: 48vh; overflow-y: auto; margin-top: 0.2rem; }
+.cal-list-day-head {
+    font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;
+    color: #a8a29e;
+    /* Stays visible while its day's events scroll past, so a long list never loses context.
+       Negative margin + matching padding bleeds it full-width over the scroll container. */
+    position: sticky; top: 0; z-index: 1; background: #fff;
+    margin: 0 -1.1rem 0.4rem; padding: 0.4rem 1.1rem;
+}
+.cal-list-day .cal-day-ev + .cal-day-ev { margin-top: 0.4rem; }
 
 /* Single-event detail modal */
 .cal-ev-detail-title { font-size: 1rem; font-weight: 700; color: #1c1917; line-height: 1.35; }
@@ -5527,20 +5696,17 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .cal-ev-row-ico { flex: 0 0 1.1rem; text-align: center; }
 .cal-ev-row-lbl { flex: 0 0 5.5rem; color: #a8a29e; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
 .cal-ev-row-val { flex: 1 1 auto; min-width: 0; color: #44403c; }
+.cal-ev-note-label { margin-top: 0.7rem; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: #a8a29e; }
 .cal-ev-note {
-    margin-top: 0.7rem; padding: 0.6rem 0.75rem; border-radius: 0.55rem; background: #faf8f4;
+    margin-top: 0.3rem; padding: 0.6rem 0.75rem; border-radius: 0.55rem; background: #faf8f4;
     border: 1px solid #f0ece4; font-size: 0.83rem; color: #57534e; line-height: 1.5;
 }
 .cal-ev-foot { margin-top: 1rem; display: flex; justify-content: flex-end; gap: 0.5rem; }
 .cal-ev-foot .btn-modal-save { text-decoration: none; }
-.cal-ev-tag {
-    font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;
-    color: #0f766e; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 0.3rem; padding: 0.05rem 0.35rem;
-}
 
-/* Toolbar: view switcher + new-event button */
-.cal-toolbar-right { flex: 0 0 auto; display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; }
-.cal-add-btn { display: inline-flex; align-items: center; gap: 0.35rem; text-decoration: none; }
+/* Toolbar: view switcher + new-event button — own row, button pushed to the far right */
+.cal-toolbar-right { flex: 1 0 100%; display: flex; align-items: center; gap: 0.85rem; flex-wrap: wrap; }
+.cal-add-btn { display: inline-flex; align-items: center; gap: 0.35rem; text-decoration: none; order: 1; margin-left: auto; }
 .cal-tb-label { font-size: 0.78rem; font-weight: 600; color: #a8a29e; white-space: nowrap; }
 .cal-viewswrap { display: inline-flex; align-items: center; gap: 0.45rem; }
 .cal-views { display: inline-flex; background: #f5f1ea; border: 1px solid #e7e1d8; border-radius: 0.6rem; padding: 0.15rem; }
@@ -5566,6 +5732,9 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .cal-week-colhead.is-today .cal-week-date { background: var(--accent); color: #fff; }
 .cal-week-colbody { flex: 1 1 auto; min-height: 22rem; padding: 0.35rem 0.3rem; display: flex; flex-direction: column; gap: 0.2rem; cursor: pointer; }
 .cal-week-colbody:hover { background: #fcfaf6; }
+.cal-week-col.is-weekend .cal-week-colbody { background: #eef2f9; }
+.cal-week-col.is-weekend .cal-week-colbody:hover { background: #e7edf6; }
+.cal-week-col.is-weekend .cal-week-wd { color: #7d8bb0; }
 .cal-week-empty { color: #d6d3d1; font-size: 0.8rem; text-align: center; padding-top: 0.4rem; }
 
 /* Day view */
@@ -5588,6 +5757,9 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
     font-family: inherit; color: #44403c; box-shadow: 0 1px 2px rgba(28,25,23,0.06);
 }
 .cal-dayv-ev:hover { filter: brightness(0.97); }
+/* Zero-duration events: thin full-width marker, always on top so a longer
+   event starting at the same time can't bury it. */
+.cal-dayv-ev--point { z-index: 4; border-left-width: 4px; box-shadow: 0 1px 4px rgba(28,25,23,0.22); }
 .cal-dayv-ev-time { font-weight: 700; margin-right: 0.2rem; }
 .cal-dayv-ev-title { white-space: nowrap; }
 
@@ -5601,12 +5773,14 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 [data-theme="dark"] .cal-dayv-ev.hkind--trial   { background: #3a1a1a; }
 [data-theme="dark"] .cal-dayv-ev.hkind--meeting { background: #2a1f3d; }
 [data-theme="dark"] .cal-dayv-ev.hkind--other   { background: #0f2e2b; }
+[data-theme="dark"] .cal-dayv-ev.hkind--private { background: #2b2b31; }
 
 /* Modal footer (day list "add") + form rows */
 .cal-modal-foot { padding: 0.5rem 1.1rem 1.1rem; display: flex; justify-content: flex-end; }
-.cal-form-row { display: flex; gap: 0.5rem; }
-.cal-form-date { flex: 1 1 auto; }
-.cal-form-time { flex: 0 0 7rem; cursor: pointer; }
+.cal-form-row { display: flex; gap: 0.5rem; align-items: center; }
+.cal-form-date { flex: 1 1 auto; margin-bottom: 0.6rem; }
+.cal-form-time-row { justify-content: center; }
+.cal-form-time { flex: 0 0 auto; }
 #calFormModal .cal-modal-list > .field { width: 100%; }
 
 [data-theme="dark"] .cal-views { background: #212125; border-color: #3c3c44; }
@@ -5618,7 +5792,6 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 [data-theme="dark"] .cal-week-colhead:hover { background: #1d1d21; }
 [data-theme="dark"] .cal-week-date { color: #d6d6dd; }
 [data-theme="dark"] .cal-week-colbody:hover { background: #1b1b1f; }
-[data-theme="dark"] .cal-ev-tag { color: #5eead4; background: #0f2e2b; border-color: #195e54; }
 [data-theme="dark"] .cal-cell-add:hover { background: #2b2b33; }
 
 [data-theme="dark"] .cal-filter { color: #6b6b78; }
@@ -5627,19 +5800,30 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 [data-theme="dark"] .cal-ev-row-val { color: #d6d6dd; }
 [data-theme="dark"] .cal-ev-note { background: #212125; border-color: #2b2b31; color: #c8c8d0; }
 
-[data-theme="dark"] .cal-nav-btn, [data-theme="dark"] .cal-today-btn { background: #212125; border-color: #3c3c44; color: #c8c8d0; }
+[data-theme="dark"] .cal-nav-btn, [data-theme="dark"] .cal-today-btn, [data-theme="dark"] .cal-list-btn { background: #212125; border-color: #3c3c44; color: #c8c8d0; }
+[data-theme="dark"] .cal-list-preset { background: #212125; border-color: #3c3c44; color: #c8c8d0; }
+[data-theme="dark"] .cal-list-preset.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+[data-theme="dark"] .cal-list-back { color: #c8c8d0; }
+[data-theme="dark"] .cal-list-day-head { color: #6b6b78; background: #1c1c20; }
 [data-theme="dark"] .cal-title { color: #ededf0; }
 [data-theme="dark"] .cal-wd { color: #6b6b78; border-bottom-color: #2b2b31; }
 [data-theme="dark"] .cal-cell { border-color: #2b2b31; }
 [data-theme="dark"] .cal-cell:hover { background: #1d1d21; }
 [data-theme="dark"] .cal-cell.is-other { background: #19191c; }
-[data-theme="dark"] .cal-cell.is-weekend:not(.is-other) { background: #1b1b1f; }
+[data-theme="dark"] .cal-cell.is-weekend { background: #1b1e29; }
+[data-theme="dark"] .cal-cell.is-weekend.is-other { background: #181a22; }
+[data-theme="dark"] .cal-cell.is-weekend:hover { background: #20232f; }
+[data-theme="dark"] .cal-wd.is-weekend { color: #818bb0; }
+[data-theme="dark"] .cal-week-col.is-weekend .cal-week-colbody { background: #1b1e29; }
+[data-theme="dark"] .cal-week-col.is-weekend .cal-week-colbody:hover { background: #20232f; }
+[data-theme="dark"] .cal-week-col.is-weekend .cal-week-wd { color: #818bb0; }
 [data-theme="dark"] .cal-cell-day { color: #c8c8d0; }
 [data-theme="dark"] .cal-ev { background: #26262b; color: #d6d6dd; }
 [data-theme="dark"] .cal-ev.hkind--hearing { background: #2e2410; }
 [data-theme="dark"] .cal-ev.hkind--trial   { background: #3a1a1a; }
 [data-theme="dark"] .cal-ev.hkind--meeting { background: #2a1f3d; }
 [data-theme="dark"] .cal-ev.hkind--other   { background: #0f2e2b; }
+[data-theme="dark"] .cal-ev.hkind--private { background: #2b2b31; }
 [data-theme="dark"] .cal-pop-card { background: #1c1c20; border-color: #34343c; box-shadow: 0 14px 40px rgba(0,0,0,0.5); }
 [data-theme="dark"] .cal-modal-head { border-bottom-color: #2b2b31; }
 [data-theme="dark"] .cal-modal-head h3, [data-theme="dark"] .cal-day-ev-title { color: #ededf0; }
@@ -5697,7 +5881,7 @@ span.flatpickr-day.selected:hover { background: var(--accent-hover); }
 
 /* Split date + time controls (Настани compose / edit) */
 .hearing-date-input { flex: 0 0 9rem; }
-.hearing-time-input { flex: 0 0 6rem; cursor: pointer; }
+.hearing-time-input { flex: 0 0 auto; }
 .hearing-edit-date { flex: 0 0 9rem; }
 .hearing-edit-time { flex: 0 0 6rem; cursor: pointer; }
 

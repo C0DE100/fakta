@@ -248,6 +248,11 @@ CREATE TABLE IF NOT EXISTS cases (
 // Upgrade path: case lifecycle phase collapsed into the existing archived_at flag.
 safe($pdo, "ALTER TABLE cases DROP KEY idx_cases_status");
 safe($pdo, "ALTER TABLE cases DROP COLUMN status");
+// Re-introduced as a lightweight in-progress flag (Активен / Во чекање), independent
+// of archiving (archived_at still wins for the Архивиран state).
+safe($pdo, "ALTER TABLE cases ADD COLUMN status ENUM('active','waiting') NOT NULL DEFAULT 'active' AFTER value_currency");
+// Card header colour, picked from a fixed palette (see CaseFile::COLORS).
+safe($pdo, "ALTER TABLE cases ADD COLUMN color VARCHAR(20) NULL AFTER status");
 
 safe($pdo, "
 CREATE TABLE IF NOT EXISTS case_parties (
@@ -363,9 +368,10 @@ CREATE TABLE IF NOT EXISTS case_hearings (
     id         INT UNSIGNED NOT NULL AUTO_INCREMENT,
     company_id INT UNSIGNED NOT NULL,
     case_id    INT UNSIGNED NOT NULL,
-    kind       ENUM('hearing','trial','meeting') NOT NULL DEFAULT 'hearing',
+    kind       ENUM('hearing','trial','meeting','other') NOT NULL DEFAULT 'hearing',
     title      VARCHAR(255) NOT NULL,
     hearing_at DATETIME NOT NULL,
+    ends_at    DATETIME NULL,
     location   VARCHAR(255) NULL,
     note       TEXT NULL,
     created_by INT UNSIGNED NULL,
@@ -377,8 +383,10 @@ CREATE TABLE IF NOT EXISTS case_hearings (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
 // Upgrade path for databases created before the calendar (kind column).
-safe($pdo, "ALTER TABLE case_hearings ADD COLUMN kind ENUM('hearing','trial','meeting') NOT NULL DEFAULT 'hearing' AFTER case_id");
+safe($pdo, "ALTER TABLE case_hearings ADD COLUMN kind ENUM('hearing','trial','meeting','other') NOT NULL DEFAULT 'hearing' AFTER case_id");
+safe($pdo, "ALTER TABLE case_hearings MODIFY COLUMN kind ENUM('hearing','trial','meeting','other') NOT NULL DEFAULT 'hearing'");
 safe($pdo, "ALTER TABLE case_hearings ADD COLUMN deleted_at DATETIME NULL");
+safe($pdo, "ALTER TABLE case_hearings ADD COLUMN ends_at DATETIME NULL AFTER hearing_at");
 
 // Personal calendar events (NOT tied to a case): client meetings, reminders,
 // anything the user names. Owned by user_id; only the owner manages them.
@@ -387,9 +395,10 @@ CREATE TABLE IF NOT EXISTS calendar_events (
     id         INT UNSIGNED NOT NULL AUTO_INCREMENT,
     company_id INT UNSIGNED NOT NULL,
     user_id    INT UNSIGNED NOT NULL,                                  -- owner / creator
-    kind       ENUM('hearing','trial','meeting','other') NOT NULL DEFAULT 'meeting',
+    kind       ENUM('hearing','trial','meeting','other','private') NOT NULL DEFAULT 'meeting',
     title      VARCHAR(255) NOT NULL,
     starts_at  DATETIME NOT NULL,
+    ends_at    DATETIME NULL,
     location   VARCHAR(255) NULL,
     note       TEXT NULL,
     created_at DATETIME NOT NULL DEFAULT current_timestamp(),
@@ -398,6 +407,8 @@ CREATE TABLE IF NOT EXISTS calendar_events (
     KEY idx_ce_user    (company_id, user_id, starts_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
+safe($pdo, "ALTER TABLE calendar_events ADD COLUMN ends_at DATETIME NULL AFTER starts_at");
+safe($pdo, "ALTER TABLE calendar_events MODIFY COLUMN kind ENUM('hearing','trial','meeting','other','private') NOT NULL DEFAULT 'meeting'");
 
 safe($pdo, "
 CREATE TABLE IF NOT EXISTS case_files (

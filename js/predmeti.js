@@ -25,6 +25,21 @@ $(function () {
     var editingId = null;
     var activeClientRow = null;  // the party row that opened the quick-client modal
     var searchTimer = null, basisTimer = null;
+    var selectedColor = null;
+
+    // Card header colour palette — keys match CaseFile::COLORS server-side.
+    var CASE_COLORS = [
+        { key: 'slate',  bg: '#475569', fg: '#ffffff' },
+        { key: 'red',    bg: '#dc2626', fg: '#ffffff' },
+        { key: 'orange', bg: '#ea580c', fg: '#ffffff' },
+        { key: 'amber',  bg: '#d97706', fg: '#ffffff' },
+        { key: 'green',  bg: '#16a34a', fg: '#ffffff' },
+        { key: 'blue',   bg: '#2563eb', fg: '#ffffff' },
+        { key: 'purple', bg: '#7c3aed', fg: '#ffffff' },
+        { key: 'pink',   bg: '#db2777', fg: '#ffffff' }
+    ];
+    function caseColorOf(key) { return CASE_COLORS.find(function (c) { return c.key === key; }) || null; }
+    var HEARING_KIND_LABEL = { hearing: 'Рочиште', meeting: 'Состанок', other: 'Друго' };
 
     /* ---------------- helpers ---------------- */
 
@@ -139,18 +154,21 @@ $(function () {
         if (single) return esc(single) + roleChip(singleRole);
         return muted(emptyTxt);
     }
-    // All parties of one side, stacked one below another (list row).
-    function partyStack(arr, single, singleRole) {
+    // All parties of one side, stacked one below another (list row). `side`
+    // ('client'/'opponent') drives a colour cue so the two groups stay
+    // visually distinct even when no својство role is set.
+    function partyStack(arr, single, singleRole, side) {
+        var cls = 'case-party-stack-line case-party-stack-line--' + side;
         if (arr && arr.length) {
-            return arr.map(function (p) { return '<span class="case-party-stack-line"><strong>' + esc(p.name || '—') + '</strong>' + roleChip(p.role) + '</span>'; }).join('');
+            return arr.map(function (p) { return '<span class="' + cls + '"><strong>' + esc(p.name || '—') + '</strong>' + roleChip(p.role) + '</span>'; }).join('');
         }
-        return '<span class="case-party-stack-line"><strong>' + esc(single || '—') + '</strong>' + roleChip(singleRole) + '</span>';
+        return '<span class="' + cls + '"><strong>' + esc(single || '—') + '</strong>' + roleChip(singleRole) + '</span>';
     }
 
     function statusBadge(r) {
-        return r.archived_at
-            ? '<span class="case-badge case-badge--archived">Архивиран</span>'
-            : '<span class="case-badge case-badge--active">Активен</span>';
+        if (r.archived_at) return '<span class="case-badge case-badge--archived">Архивиран</span>';
+        if (r.status === 'waiting') return '<span class="case-badge case-badge--waiting">Во чекање</span>';
+        return '<span class="case-badge case-badge--active">Активен</span>';
     }
 
     function actionsHtml(r) {
@@ -173,11 +191,22 @@ $(function () {
         }).join('') + (list.length > 4 ? '<span class="case-assignee-av case-assignee-more">+' + (list.length - 4) + '</span>' : '');
     }
 
+    function nextHearingHtml(r) {
+        if (!r.next_hearing) return '';
+        var k = HEARING_KIND_LABEL[r.next_hearing_kind] ? r.next_hearing_kind : 'hearing';
+        return '<div class="case-next-hearing case-next-hearing--' + k + '">'
+            + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>'
+            + '<span class="hkind-badge hkind--' + k + '">' + esc(HEARING_KIND_LABEL[k]) + '</span>'
+            + '<span class="case-next-hearing-text"><span class="case-next-hearing-label">Следен настан:</span> <strong>' + esc(hearingLabel(r.next_hearing)) + '</strong></span></div>';
+    }
+
     function card(r) {
         var value = fmtMoney(r.value_amount, r.value_currency);
+        var col = r.color ? caseColorOf(r.color) : null;
+        var headStyle = col ? ' style="background:' + col.bg + ';color:' + col.fg + '"' : '';
         return '<div class="case-card" data-id="' + r.id + '">'
             + actionsHtml(r)
-            + '<div class="case-card-num">'
+            + '<div class="case-card-num"' + headStyle + '>'
             +   '<div class="case-card-num-row"><span class="case-num">' + esc(r.case_number) + '</span>' + statusBadge(r) + '</div>'
             + '</div>'
             + fld('Основ', r.basis ? esc(r.basis) : muted('Нема основ'))
@@ -187,12 +216,12 @@ $(function () {
             +   fld('Вредност', value ? esc(value) : muted('—'))
             +   fld('Административен број', r.admin_number ? esc(r.admin_number) : muted('—'))
             + '</div>'
-            + (r.next_hearing ? '<div class="case-next-hearing"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>Следен настан: <strong>' + esc(hearingLabel(r.next_hearing)) + '</strong></div>' : '')
+            + nextHearingHtml(r)
             + (+r.doc_count > 0 ? '<div class="case-doc-count"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>' + r.doc_count + ' ' + (+r.doc_count === 1 ? 'документ' : 'документи') + '</div>' : '')
             + '<div class="case-card-footer">'
-            +   '<div class="case-foot-block">'
+            +   '<div class="case-foot-block case-foot-block--assignees">'
             +     '<span class="case-fld-l">Доделено на</span>'
-            +     '<div class="case-assignees">' + (assigneeAvatars(r.assignees) || muted('Никој')) + '</div>'
+            +     '<div class="case-assignees">' + (assigneeAvatars(r.assignees) || muted('—')) + '</div>'
             +   '</div>'
             + '</div>'
             + '</div>';
@@ -217,8 +246,8 @@ $(function () {
             + '<div class="case-cell case-cell-num"><span class="case-num-sm">' + esc(r.case_number) + '</span>'
             +   (r.archived_at ? '<span class="case-badge case-badge--archived">арх.</span>' : '<span class="case-badge case-badge--active">активен</span>') + '</div>'
             + '<div class="case-cell case-cell-parties">'
-            +   partyStack(r.client_parties, r.client_name, r.client_role)
-            +   partyStack(r.opponent_parties, r.opponent_name, r.opponent_role)
+            +   partyStack(r.client_parties, r.client_name, r.client_role, 'client')
+            +   partyStack(r.opponent_parties, r.opponent_name, r.opponent_role, 'opponent')
             + '</div>'
             + '<div class="case-cell case-cell-basis">' + (r.basis ? esc(r.basis) : muted('—')) + '</div>'
             + '<div class="case-cell case-cell-value">' + (value ? esc(value) : muted('—')) + '</div>'
@@ -377,22 +406,35 @@ $(function () {
         });
     });
 
-    function clientOptions(selectedId) {
-        var o = '<option value="">— избери клиент —</option>';
-        clients.forEach(function (c) {
-            o += '<option value="' + c.id + '"' + (String(c.id) === String(selectedId) ? ' selected' : '') + '>' + esc(clientName(c)) + '</option>';
-        });
-        return o;
-    }
-
     function clientPartyRow(party) {
         party = party || {};
-        return '<div class="case-party-row" data-side="client">'
-            + '<select class="field party-client">' + clientOptions(party.client_id) + '</select>'
-            + '<button type="button" class="party-new-client" title="Нов клиент"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg></button>'
+        var name = party.client_id ? (party.name || (function () {
+            var c = clients.find(function (x) { return String(x.id) === String(party.client_id); });
+            return c ? clientName(c) : '';
+        })()) : '';
+        return '<div class="case-party-row case-party-row--client" data-side="client" data-client-id="' + esc(party.client_id || '') + '">'
+            + '<div class="party-client-search-wrap">'
+            +   '<input type="text" class="field party-client-search" placeholder="Пребарај клиент…" value="' + esc(name) + '" autocomplete="off">'
+            +   '<div class="party-client-dropdown" style="display:none"></div>'
+            + '</div>'
             + '<input type="text" class="field party-role" placeholder="Својство (пр. Тужител)" value="' + esc(party.role || '') + '">'
             + '<button type="button" class="party-remove" title="Отстрани">&times;</button>'
             + '</div>';
+    }
+
+    // Filterable client dropdown for a party row, with "Креирај нов клиент" pinned top-right.
+    function renderClientDropdown($row, q) {
+        q = (q || '').toLowerCase().trim();
+        var list = clients.filter(function (c) { return !q || clientName(c).toLowerCase().indexOf(q) !== -1; });
+        var html = '<div class="party-client-drop-new" data-action="new-client">'
+            + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>'
+            + 'Креирај нов клиент</div>';
+        html += list.length
+            ? list.slice(0, 50).map(function (c) {
+                return '<div class="party-client-drop-item" data-id="' + c.id + '" data-name="' + esc(clientName(c)) + '">' + esc(clientName(c)) + '</div>';
+            }).join('')
+            : '<div class="assignee-drop-empty">' + (q ? 'Нема резултати.' : 'Нема клиенти.') + '</div>';
+        $row.find('.party-client-dropdown').html(html).show();
     }
 
     function opponentPartyRow(party) {
@@ -474,10 +516,39 @@ $(function () {
         if ($list.attr('id') === 'clientPartyList' && !$list.children().length) $list.append(clientPartyRow());
     });
 
-    // inline new-client
-    $('#caseForm').on('click', '.party-new-client', function () {
+    // ---- client party: searchable text input + dropdown ----
+    $('#caseForm').on('focus', '.party-client-search', function () { renderClientDropdown($(this).closest('.case-party-row'), $(this).val()); });
+    $('#caseForm').on('input', '.party-client-search', function () {
+        var $row = $(this).closest('.case-party-row');
+        $row.attr('data-client-id', '');
+        renderClientDropdown($row, $(this).val());
+    });
+    $('#caseForm').on('blur', '.party-client-search', function () { var $d = $(this).closest('.case-party-row').find('.party-client-dropdown'); setTimeout(function () { $d.hide(); }, 150); });
+    $('#caseForm').on('mousedown', '.party-client-drop-item', function (e) {
+        e.preventDefault();
+        var $row = $(this).closest('.case-party-row');
+        $row.attr('data-client-id', $(this).data('id'));
+        $row.find('.party-client-search').val($(this).data('name'));
+        $row.find('.party-client-dropdown').hide();
+    });
+    $('#caseForm').on('mousedown', '.party-client-drop-new', function (e) {
+        e.preventDefault();
         activeClientRow = $(this).closest('.case-party-row');
+        activeClientRow.find('.party-client-dropdown').hide();
         openQuickClient();
+    });
+
+    function renderColorPicker() {
+        $('#caseColorPicker').html(
+            '<button type="button" class="case-color-swatch case-color-swatch--none' + (!selectedColor ? ' is-active' : '') + '" data-color="" title="Без боја">&times;</button>'
+            + CASE_COLORS.map(function (c) {
+                return '<button type="button" class="case-color-swatch' + (selectedColor === c.key ? ' is-active' : '') + '" data-color="' + c.key + '" style="background:' + c.bg + '" title="' + c.key + '"></button>';
+            }).join('')
+        );
+    }
+    $('#caseColorPicker').on('click', '.case-color-swatch', function () {
+        selectedColor = $(this).data('color') || null;
+        renderColorPicker();
     });
 
     function resetModal() {
@@ -485,9 +556,12 @@ $(function () {
         $('#caseId').val('');
         $('#caseForm')[0].reset();
         $('#caseCurrency').val('ден');
+        $('#caseStatus').val('active');
         $('#caseAlert').hide();
         $('#adminNumberRow, #officialPersonRow, #caseNoteBlock').show();
         selectedAssignees = {};
+        selectedColor = null;
+        renderColorPicker();
         $('#clientPartyList').html(clientPartyRow());
         $('#opponentPartyList').html(opponentPartyRow());
         $('#assigneeSearch').val('');
@@ -512,7 +586,14 @@ $(function () {
             $('#caseBasis').val(c.basis || '');
             $('#caseValue').val(c.value_amount != null ? String(c.value_amount).replace('.', ',') : '');
             $('#caseCurrency').val(c.value_currency || 'ден');
-            $('#adminNumberRow, #officialPersonRow, #caseNoteBlock').hide(); // managed on the detail page when editing
+            $('#caseStatus').val(c.status || 'active');
+            selectedColor = c.color || null;
+            renderColorPicker();
+
+            var currentAdmin = (c.admin_numbers || []).find(function (a) { return +a.is_current === 1; });
+            $('#caseAdminNumber').val(currentAdmin ? (currentAdmin.admin_number || '') : '');
+            $('#caseOfficialPerson').val(currentAdmin ? (currentAdmin.official_person || '') : '');
+            $('#caseInitialNote').val('');
 
             var cParties = (c.parties || []).filter(function (p) { return p.side === 'client'; });
             var oParties = (c.parties || []).filter(function (p) { return p.side === 'opponent'; });
@@ -533,7 +614,7 @@ $(function () {
     function collectParties() {
         var out = [];
         $('#clientPartyList .case-party-row').each(function () {
-            var cid = $(this).find('.party-client').val();
+            var cid = $(this).attr('data-client-id');
             if (!cid) return;
             out.push({ side: 'client', client_id: cid, role: $(this).find('.party-role').val().trim() });
         });
@@ -557,21 +638,26 @@ $(function () {
             showAlert('Додај барем една странка-клиент (избери клиент).'); return;
         }
 
+        var rawValue = $('#caseValue').val().trim();
+        if (rawValue && !/^[0-9]+([.,][0-9]+)?$/.test(rawValue)) {
+            showAlert('Вредноста мора да биде број (пр. 15000 или 15000,50).'); $('#caseValue').focus(); return;
+        }
+
         var data = {
             basis: $('#caseBasis').val().trim(),
-            value_amount: $('#caseValue').val().trim(),
+            value_amount: rawValue,
             value_currency: $('#caseCurrency').val(),
+            status: $('#caseStatus').val(),
+            color: selectedColor || '',
             parties: JSON.stringify(parties),
-            assignees: JSON.stringify(Object.keys(selectedAssignees))
+            assignees: JSON.stringify(Object.keys(selectedAssignees)),
+            admin_number: $('#caseAdminNumber').val().trim(),
+            official_person: $('#caseOfficialPerson').val().trim(),
+            note: $('#caseInitialNote').val().trim()
         };
         var action;
         if (editingId) { action = 'update'; data.id = editingId; }
-        else {
-            action = 'create';
-            data.admin_number = $('#caseAdminNumber').val().trim();
-            data.official_person = $('#caseOfficialPerson').val().trim();
-            data.note = $('#caseInitialNote').val().trim();
-        }
+        else { action = 'create'; }
 
         var $btn = $('#caseSaveBtn').prop('disabled', true).text('Се зачувува...');
         post(action, data).done(function (r) {
@@ -584,6 +670,16 @@ $(function () {
     function showAlert(msg) {
         $('#caseAlert').removeClass('alert-ok').addClass('alert-err').text(msg).show();
     }
+
+    // Вредност: digits, one decimal separator (comma or dot) only.
+    $('#caseValue').on('input', function () {
+        var v = $(this).val().replace(/[^0-9.,]/g, '');
+        var firstSep = v.search(/[.,]/);
+        if (firstSep !== -1) {
+            v = v.slice(0, firstSep + 1) + v.slice(firstSep + 1).replace(/[.,]/g, '');
+        }
+        $(this).val(v);
+    });
 
     /* ---------------- основ autocomplete ---------------- */
 
@@ -663,8 +759,10 @@ $(function () {
                 if (!res.success) { $('#quickClientAlert').removeClass('alert-ok').addClass('alert-err').text(res.message).show(); return; }
                 // refresh client list, then select the new one in the originating row
                 loadClients(function () {
-                    refreshClientSelects();
-                    if (activeClientRow) activeClientRow.find('.party-client').val(res.id);
+                    if (activeClientRow) {
+                        var c = clients.find(function (x) { return String(x.id) === String(res.id); });
+                        activeClientRow.attr('data-client-id', res.id).find('.party-client-search').val(c ? clientName(c) : '');
+                    }
                     toast('Клиентот е креиран и поврзан.', 'success');
                     closeQuickClient();
                 });
@@ -672,14 +770,6 @@ $(function () {
             .fail(function () { $('#quickClientAlert').removeClass('alert-ok').addClass('alert-err').text('Грешка при комуникација.').show(); })
             .always(function () { $btn.prop('disabled', false).text('Зачувај клиент'); });
     });
-
-    // Re-render every client <select> preserving current selection.
-    function refreshClientSelects() {
-        $('#clientPartyList .party-client').each(function () {
-            var cur = $(this).val();
-            $(this).html(clientOptions(cur));
-        });
-    }
 
     /* ---------------- CSV import ---------------- */
 

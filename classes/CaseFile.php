@@ -25,8 +25,23 @@ class CaseFile
     /** Allowed note types. */
     public const NOTE_TYPES = ['general', 'call', 'meeting', 'important'];
 
-    /** Calendar event kinds: рочиште / состанок. ('trial' kept only for legacy rows; no longer assignable.) */
-    public const HEARING_KINDS = ['hearing', 'meeting'];
+    /** Calendar event kinds: рочиште / состанок / друго. ('trial' kept only for legacy rows; no longer assignable.) */
+    public const HEARING_KINDS = ['hearing', 'meeting', 'other'];
+
+    /** Allowed case lifecycle statuses (independent of archiving). */
+    public const STATUSES = ['active', 'waiting'];
+
+    /** Allowed card colours (key => [bg, fg] — picked to stay readable). */
+    public const COLORS = [
+        'slate'  => ['#475569', '#ffffff'],
+        'red'    => ['#dc2626', '#ffffff'],
+        'orange' => ['#ea580c', '#ffffff'],
+        'amber'  => ['#d97706', '#ffffff'],
+        'green'  => ['#16a34a', '#ffffff'],
+        'blue'   => ['#2563eb', '#ffffff'],
+        'purple' => ['#7c3aed', '#ffffff'],
+        'pink'   => ['#db2777', '#ffffff'],
+    ];
 
     public function __construct(Database $db)
     {
@@ -130,8 +145,8 @@ class CaseFile
         $seq  = $this->nextCaseSeq($companyId, $year);
 
         $stmt = $pdo->prepare(
-            "INSERT INTO cases (company_id, case_seq, case_year, basis, value_amount, value_currency, created_by, created_at)
-             VALUES (:cid, :seq, :year, :basis, :amount, :currency, :by, NOW())"
+            "INSERT INTO cases (company_id, case_seq, case_year, basis, value_amount, value_currency, status, color, created_by, created_at)
+             VALUES (:cid, :seq, :year, :basis, :amount, :currency, :status, :color, :by, NOW())"
         );
         $stmt->execute([
             ':cid'      => $companyId,
@@ -140,6 +155,8 @@ class CaseFile
             ':basis'    => $this->nz($data['basis'] ?? null),
             ':amount'   => $this->money($data['value_amount'] ?? null),
             ':currency' => ($data['value_currency'] ?? 'ден') === 'евра' ? 'евра' : 'ден',
+            ':status'   => $this->normStatus($data['status'] ?? null),
+            ':color'    => $this->normColor($data['color'] ?? null),
             ':by'       => $createdBy,
         ]);
         $caseId = (int) $pdo->lastInsertId();
@@ -172,13 +189,16 @@ class CaseFile
         try {
             $stmt = $pdo->prepare(
                 "UPDATE cases
-                    SET basis = :basis, value_amount = :amount, value_currency = :currency
+                    SET basis = :basis, value_amount = :amount, value_currency = :currency,
+                        status = :status, color = :color
                   WHERE id = :id AND company_id = :cid AND deleted_at IS NULL"
             );
             $stmt->execute([
                 ':basis'    => $this->nz($data['basis'] ?? null),
                 ':amount'   => $this->money($data['value_amount'] ?? null),
                 ':currency' => ($data['value_currency'] ?? 'ден') === 'евра' ? 'евра' : 'ден',
+                ':status'   => $this->normStatus($data['status'] ?? null),
+                ':color'    => $this->normColor($data['color'] ?? null),
                 ':id'       => $caseId,
                 ':cid'      => $companyId,
             ]);
@@ -248,7 +268,7 @@ class CaseFile
 
         $sql = "SELECT
                     c.id, c.case_seq, c.case_year, c.archive_seq, c.basis,
-                    c.value_amount, c.value_currency, c.archived_at, c.created_at,
+                    c.value_amount, c.value_currency, c.status, c.color, c.archived_at, c.created_at,
                     " . self::CASE_NUMBER_SQL . " AS case_number,
                     pc.role AS client_role,
                     COALESCE(NULLIF(pc.name, ''),
@@ -258,11 +278,15 @@ class CaseFile
                     po.role AS opponent_role,
                     po.name AS opponent_name,
                     an.admin_number AS admin_number,
-                    (SELECT MIN(h.hearing_at) FROM case_hearings h
-                       WHERE h.case_id = c.id AND h.deleted_at IS NULL AND h.hearing_at >= NOW()) AS next_hearing,
+                    nh.hearing_at AS next_hearing,
+                    nh.kind AS next_hearing_kind,
                     (SELECT COUNT(*) FROM case_files cf WHERE cf.case_id = c.id AND cf.deleted_at IS NULL) AS doc_count,
                     u.name AS created_by_name
                 FROM cases c
+                LEFT JOIN case_hearings nh ON nh.case_id = c.id AND nh.deleted_at IS NULL AND nh.hearing_at = (
+                    SELECT MIN(h.hearing_at) FROM case_hearings h
+                     WHERE h.case_id = c.id AND h.deleted_at IS NULL AND h.hearing_at >= NOW()
+                )
                 LEFT JOIN case_parties pc ON pc.case_id = c.id AND pc.side = 'client'   AND pc.is_primary = 1 AND pc.deleted_at IS NULL
                 LEFT JOIN clients cl      ON cl.id = pc.client_id
                 LEFT JOIN case_parties po ON po.case_id = c.id AND po.side = 'opponent' AND po.is_primary = 1 AND po.deleted_at IS NULL
@@ -767,22 +791,26 @@ class CaseFile
         return in_array($kind, self::HEARING_KINDS, true) ? $kind : 'hearing';
     }
 
-    /** Add a hearing/event. $hearingAt is 'YYYY-MM-DD HH:MM(:SS)'. Returns id or null. */
-    public function addHearing(int $companyId, int $caseId, ?int $createdBy, string $title, string $hearingAt, ?string $location, ?string $note, string $kind = 'hearing'): ?int
+    /** Default event length when no end time is given. */
+    private const DEFAULT_EVENT_MINUTES = 60;
+
+    /** Add a hearing/event. $hearingAt/$endsAt are 'YYYY-MM-DD HH:MM(:SS)'. Returns id or null. */
+    public function addHearing(int $companyId, int $caseId, ?int $createdBy, string $title, string $hearingAt, ?string $location, ?string $note, string $kind = 'hearing', ?string $endsAt = null): ?int
     {
         $title = trim($title);
         $at = $this->normDateTime($hearingAt);
         if ($title === '' || $at === null) {
             return null;
         }
+        $end = $this->normEndDateTime($at, $endsAt);
         $chk = $this->db->prepare("SELECT 1 FROM cases WHERE id = :id AND company_id = :cid AND deleted_at IS NULL");
         $chk->execute([':id' => $caseId, ':cid' => $companyId]);
         if (!$chk->fetchColumn()) {
             return null;
         }
         $stmt = $this->db->prepare(
-            "INSERT INTO case_hearings (company_id, case_id, kind, title, hearing_at, location, note, created_by, created_at)
-             VALUES (:cid, :case, :kind, :title, :at, :loc, :note, :by, NOW())"
+            "INSERT INTO case_hearings (company_id, case_id, kind, title, hearing_at, ends_at, location, note, created_by, created_at)
+             VALUES (:cid, :case, :kind, :title, :at, :end, :loc, :note, :by, NOW())"
         );
         $stmt->execute([
             ':cid'   => $companyId,
@@ -790,6 +818,7 @@ class CaseFile
             ':kind'  => $this->normKind($kind),
             ':title' => mb_substr($title, 0, 255),
             ':at'    => $at,
+            ':end'   => $end,
             ':loc'   => $this->nz($location),
             ':note'  => $this->nz($note),
             ':by'    => $createdBy,
@@ -797,11 +826,59 @@ class CaseFile
         return (int) $this->db->lastInsertId();
     }
 
+    /**
+     * Find a hearing overlapping [hearingAt, endsAt) for a user, across every case
+     * they're assigned to (excluding $excludeHearingId, for edits). Null if free.
+     */
+    public function findOverlappingHearing(int $companyId, int $userId, string $hearingAt, ?string $endsAt, int $excludeHearingId = 0): ?array
+    {
+        $start = $this->normDateTime($hearingAt);
+        if ($start === null) {
+            return null;
+        }
+        $end = $this->normEndDateTime($start, $endsAt);
+        $sql = "SELECT h.title, h.hearing_at, h.ends_at FROM case_hearings h
+                JOIN case_assignees ca ON ca.case_id = h.case_id AND ca.company_id = h.company_id AND ca.deleted_at IS NULL
+                WHERE h.company_id = :cid AND h.deleted_at IS NULL AND ca.user_id = :uid
+                  AND h.hearing_at < :end AND h.ends_at > :start";
+        $params = [':cid' => $companyId, ':uid' => $userId, ':start' => $start, ':end' => $end];
+        if ($excludeHearingId > 0) {
+            $sql .= ' AND h.id <> :exid';
+            $params[':exid'] = $excludeHearingId;
+        }
+        $stmt = $this->db->prepare($sql . ' LIMIT 1');
+        $stmt->execute($params);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    /** The case_id a hearing belongs to, or null if it doesn't exist. */
+    public function getHearingCaseId(int $companyId, int $hearingId): ?int
+    {
+        $stmt = $this->db->prepare("SELECT case_id FROM case_hearings WHERE id = :id AND company_id = :cid");
+        $stmt->execute([':id' => $hearingId, ':cid' => $companyId]);
+        $caseId = $stmt->fetchColumn();
+        return $caseId !== false ? (int) $caseId : null;
+    }
+
+    /** Assignees of a case as [{id, name}], for overlap checks when scheduling a hearing. */
+    public function getAssigneeUsers(int $companyId, int $caseId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT u.id, u.name FROM case_assignees ca
+             JOIN users u ON u.id = ca.user_id
+             WHERE ca.case_id = :id AND ca.company_id = :cid AND ca.deleted_at IS NULL
+             ORDER BY u.name"
+        );
+        $stmt->execute([':id' => $caseId, ':cid' => $companyId]);
+        return $stmt->fetchAll();
+    }
+
     /** Hearings on a case, chronological (earliest first), with creator name. */
     public function getHearings(int $companyId, int $caseId): array
     {
         $stmt = $this->db->prepare(
-            "SELECT h.id, h.kind, h.title, h.hearing_at, h.location, h.note, h.created_by, cu.name AS creator_name
+            "SELECT h.id, h.kind, h.title, h.hearing_at, h.ends_at, h.location, h.note, h.created_by, cu.name AS creator_name
              FROM case_hearings h
              LEFT JOIN users cu ON cu.id = h.created_by
              WHERE h.case_id = :id AND h.company_id = :cid AND h.deleted_at IS NULL
@@ -809,6 +886,16 @@ class CaseFile
         );
         $stmt->execute([':id' => $caseId, ':cid' => $companyId]);
         return $stmt->fetchAll();
+    }
+
+    /** Resolve an end time: explicit value if valid, else start + default length. */
+    private function normEndDateTime(string $start, ?string $endsAt): string
+    {
+        $end = $endsAt !== null ? $this->normDateTime($endsAt) : null;
+        if ($end !== null && $end > $start) {
+            return $end;
+        }
+        return date('Y-m-d H:i:s', strtotime($start) + self::DEFAULT_EVENT_MINUTES * 60);
     }
 
     /**
@@ -833,7 +920,7 @@ class CaseFile
         }
 
         $stmt = $this->db->prepare(
-            "SELECT h.id, h.case_id, h.kind, h.title, h.hearing_at, h.location, h.note,
+            "SELECT h.id, h.case_id, h.kind, h.title, h.hearing_at, h.ends_at, h.location, h.note,
                     h.created_by, cu.name AS creator_name,
                     " . self::CASE_NUMBER_SQL . " AS case_number,
                     c.basis AS case_basis,
@@ -857,20 +944,22 @@ class CaseFile
         return $stmt->fetchAll();
     }
 
-    public function updateHearing(int $companyId, int $hearingId, int $userId, bool $isAdmin, string $title, string $hearingAt, ?string $location, ?string $note, string $kind = 'hearing'): bool
+    public function updateHearing(int $companyId, int $hearingId, int $userId, bool $isAdmin, string $title, string $hearingAt, ?string $location, ?string $note, string $kind = 'hearing', ?string $endsAt = null): bool
     {
         $title = trim($title);
         $at = $this->normDateTime($hearingAt);
         if ($title === '' || $at === null || !$this->hearingEditable($companyId, $hearingId, $userId, $isAdmin)) {
             return false;
         }
+        $end = $this->normEndDateTime($at, $endsAt);
         $this->db->prepare(
-            "UPDATE case_hearings SET kind = :kind, title = :title, hearing_at = :at, location = :loc, note = :note
+            "UPDATE case_hearings SET kind = :kind, title = :title, hearing_at = :at, ends_at = :end, location = :loc, note = :note
              WHERE id = :id AND company_id = :cid"
         )->execute([
             ':kind'  => $this->normKind($kind),
             ':title' => mb_substr($title, 0, 255),
             ':at'    => $at,
+            ':end'   => $end,
             ':loc'   => $this->nz($location),
             ':note'  => $this->nz($note),
             ':id'    => $hearingId,
@@ -1340,6 +1429,21 @@ class CaseFile
             return null;
         }
         $v = str_replace([',', ' '], ['.', ''], (string) $v);
-        return is_numeric($v) ? (float) $v : null;
+        if (!is_numeric($v)) {
+            throw new InvalidArgumentException('Вредноста мора да биде број.');
+        }
+        return (float) $v;
+    }
+
+    private function normStatus(?string $status): string
+    {
+        $status = trim((string) $status);
+        return in_array($status, self::STATUSES, true) ? $status : 'active';
+    }
+
+    private function normColor(?string $color): ?string
+    {
+        $color = trim((string) $color);
+        return isset(self::COLORS[$color]) ? $color : null;
     }
 }

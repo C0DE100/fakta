@@ -28,7 +28,19 @@ if (current_role() === 'praktikant' && in_array($action, $restricted, true)) {
 /** Macedonian label for a calendar event kind (for audit details). */
 function hearing_kind_label(string $kind): string
 {
-    return ['hearing' => 'Рочиште', 'trial' => 'Судење', 'meeting' => 'Состанок'][$kind] ?? 'Рочиште';
+    return ['hearing' => 'Рочиште', 'trial' => 'Судење', 'meeting' => 'Состанок', 'other' => 'Друго'][$kind] ?? 'Рочиште';
+}
+
+/** Human-readable "16:00–16:30" (plus date if not today) for a conflicting event row. */
+function format_conflict(array $row, string $startKey, string $endKey): string
+{
+    $start = strtotime($row[$startKey]);
+    $end   = strtotime($row[$endKey]);
+    $range = date('H:i', $start) . '–' . date('H:i', $end);
+    if (date('Y-m-d', $start) !== date('Y-m-d')) {
+        $range = date('d.m.Y', $start) . ' ' . $range;
+    }
+    return "„{$row['title']}“ ({$range})";
 }
 
 /** Decode a JSON array sent as a POST field; always returns an array. */
@@ -50,6 +62,8 @@ try {
                 'basis'           => trim($_POST['basis'] ?? ''),
                 'value_amount'    => $_POST['value_amount'] ?? null,
                 'value_currency'  => $_POST['value_currency'] ?? 'ден',
+                'status'          => $_POST['status'] ?? 'active',
+                'color'           => $_POST['color'] ?? null,
                 'admin_number'    => trim($_POST['admin_number'] ?? ''),
                 'official_person' => trim($_POST['official_person'] ?? ''),
                 'parties'         => json_field('parties'),
@@ -79,6 +93,8 @@ try {
                 'basis'          => trim($_POST['basis'] ?? ''),
                 'value_amount'   => $_POST['value_amount'] ?? null,
                 'value_currency' => $_POST['value_currency'] ?? 'ден',
+                'status'         => $_POST['status'] ?? 'active',
+                'color'          => $_POST['color'] ?? null,
                 'parties'        => json_field('parties'),
                 'assignees'      => json_field('assignees'),
             ];
@@ -87,6 +103,25 @@ try {
                 exit;
             }
             $cases->update($companyId, $id, $data);
+
+            // Optional, aligned with create: admin number / official person (only if changed
+            // from the current one — avoids piling up identical history rows) + a quick note.
+            $adminNo  = trim($_POST['admin_number'] ?? '');
+            $official = trim($_POST['official_person'] ?? '');
+            if ($adminNo !== '') {
+                $current = null;
+                foreach ($cases->getById($companyId, $id)['admin_numbers'] ?? [] as $an) {
+                    if ((int) $an['is_current'] === 1) { $current = $an; break; }
+                }
+                if (!$current || $current['admin_number'] !== $adminNo || (string) $current['official_person'] !== $official) {
+                    $cases->addAdminNumber($companyId, $id, $adminNo, $official);
+                }
+            }
+            $note = trim($_POST['note'] ?? '');
+            if ($note !== '') {
+                $cases->addNote($companyId, $id, current_user()['id'] ?? null, $note);
+            }
+
             fakta_audit('case.update', 'case', $id, $cases->caseLabel($companyId, $id));
             echo json_encode(['success' => true, 'message' => 'Предметот е успешно ажуриран.']);
             break;
@@ -369,7 +404,7 @@ try {
                 $e['can_edit'] = false;
                 $events[] = $e;
             }
-            foreach ($calendar->getForRange($companyId, $from, $to, $aid) as $e) {
+            foreach ($calendar->getForRange($companyId, $from, $to, $aid, $uid) as $e) {
                 $e['source']      = 'personal';
                 $e['start']       = $e['starts_at'];
                 $e['can_edit']    = ((int) $e['user_id'] === $uid);
@@ -385,13 +420,21 @@ try {
             // Personal calendar event — always owned by the current user.
             $title = trim($_POST['title'] ?? '');
             $at    = trim($_POST['starts_at'] ?? '');
+            $end   = trim($_POST['ends_at'] ?? '');
             $kind  = trim($_POST['kind'] ?? 'meeting');
             if ($title === '' || $at === '') {
                 echo json_encode(['success' => false, 'message' => 'Внеси наслов и датум/време.']);
                 exit;
             }
             $uid = (int) (current_user()['id'] ?? 0);
-            $id  = $calendar->add($companyId, $uid, $title, $at, $kind, trim($_POST['location'] ?? ''), trim($_POST['note'] ?? ''));
+            $conflict = $calendar->findOverlap($companyId, $uid, $at, $end ?: null)
+                     ?? $cases->findOverlappingHearing($companyId, $uid, $at, $end ?: null);
+            if ($conflict !== null) {
+                $key = isset($conflict['starts_at']) ? 'starts_at' : 'hearing_at';
+                echo json_encode(['success' => false, 'message' => 'Веќе имате настан во тој термин: ' . format_conflict($conflict, $key, 'ends_at')]);
+                exit;
+            }
+            $id  = $calendar->add($companyId, $uid, $title, $at, $kind, trim($_POST['location'] ?? ''), trim($_POST['note'] ?? ''), $end ?: null);
             echo json_encode(['success' => (bool) $id, 'message' => $id ? 'Настанот е додаден.' : 'Невалидни податоци.', 'id' => $id]);
             break;
         }
@@ -400,13 +443,21 @@ try {
             $eid   = (int) ($_POST['event_id'] ?? 0);
             $title = trim($_POST['title'] ?? '');
             $at    = trim($_POST['starts_at'] ?? '');
+            $end   = trim($_POST['ends_at'] ?? '');
             $kind  = trim($_POST['kind'] ?? 'meeting');
             if ($eid <= 0 || $title === '' || $at === '') {
                 echo json_encode(['success' => false, 'message' => 'Внеси наслов и датум/време.']);
                 exit;
             }
             $uid = (int) (current_user()['id'] ?? 0);
-            $ok  = $calendar->update($companyId, $eid, $uid, $title, $at, $kind, trim($_POST['location'] ?? ''), trim($_POST['note'] ?? ''));
+            $conflict = $calendar->findOverlap($companyId, $uid, $at, $end ?: null, $eid)
+                     ?? $cases->findOverlappingHearing($companyId, $uid, $at, $end ?: null);
+            if ($conflict !== null) {
+                $key = isset($conflict['starts_at']) ? 'starts_at' : 'hearing_at';
+                echo json_encode(['success' => false, 'message' => 'Веќе имате настан во тој термин: ' . format_conflict($conflict, $key, 'ends_at')]);
+                exit;
+            }
+            $ok  = $calendar->update($companyId, $eid, $uid, $title, $at, $kind, trim($_POST['location'] ?? ''), trim($_POST['note'] ?? ''), $end ?: null);
             echo json_encode(['success' => $ok, 'message' => $ok ? 'Настанот е ажуриран.' : 'Можете да уредувате само свои настани.']);
             break;
         }
@@ -424,12 +475,23 @@ try {
             $id    = (int) ($_POST['id'] ?? 0);
             $title = trim($_POST['title'] ?? '');
             $at    = trim($_POST['hearing_at'] ?? '');
+            $end   = trim($_POST['ends_at'] ?? '');
             $kind  = trim($_POST['kind'] ?? 'hearing');
             if ($id <= 0 || $title === '' || $at === '') {
                 echo json_encode(['success' => false, 'message' => 'Внеси наслов и датум/време.']);
                 exit;
             }
-            $hid = $cases->addHearing($companyId, $id, current_user()['id'] ?? null, $title, $at, trim($_POST['location'] ?? ''), trim($_POST['note'] ?? ''), $kind);
+            foreach ($cases->getAssigneeUsers($companyId, $id) as $assignee) {
+                $aid = (int) $assignee['id'];
+                $conflict = $calendar->findOverlap($companyId, $aid, $at, $end ?: null)
+                         ?? $cases->findOverlappingHearing($companyId, $aid, $at, $end ?: null);
+                if ($conflict !== null) {
+                    $key = isset($conflict['starts_at']) ? 'starts_at' : 'hearing_at';
+                    echo json_encode(['success' => false, 'message' => $assignee['name'] . ' веќе има настан во тој термин: ' . format_conflict($conflict, $key, 'ends_at')]);
+                    exit;
+                }
+            }
+            $hid = $cases->addHearing($companyId, $id, current_user()['id'] ?? null, $title, $at, trim($_POST['location'] ?? ''), trim($_POST['note'] ?? ''), $kind, $end ?: null);
             if ($hid) fakta_audit('case.hearing', 'case', $id, $cases->caseLabel($companyId, $id) . ' · ' . hearing_kind_label($kind) . ': ' . $title);
             echo json_encode(['success' => (bool) $hid, 'message' => $hid ? 'Настанот е додаден.' : 'Невалидни податоци.', 'id' => $hid]);
             break;
@@ -439,12 +501,24 @@ try {
             $hid   = (int) ($_POST['hearing_id'] ?? 0);
             $title = trim($_POST['title'] ?? '');
             $at    = trim($_POST['hearing_at'] ?? '');
+            $end   = trim($_POST['ends_at'] ?? '');
             $kind  = trim($_POST['kind'] ?? 'hearing');
             if ($hid <= 0 || $title === '' || $at === '') {
                 echo json_encode(['success' => false, 'message' => 'Внеси наслов и датум/време.']);
                 exit;
             }
-            $ok = $cases->updateHearing($companyId, $hid, (int) (current_user()['id'] ?? 0), current_role() === 'admin', $title, $at, trim($_POST['location'] ?? ''), trim($_POST['note'] ?? ''), $kind);
+            $hcid = $cases->getHearingCaseId($companyId, $hid);
+            foreach ($hcid !== null ? $cases->getAssigneeUsers($companyId, $hcid) : [] as $assignee) {
+                $aid = (int) $assignee['id'];
+                $conflict = $calendar->findOverlap($companyId, $aid, $at, $end ?: null)
+                         ?? $cases->findOverlappingHearing($companyId, $aid, $at, $end ?: null, $hid);
+                if ($conflict !== null) {
+                    $key = isset($conflict['starts_at']) ? 'starts_at' : 'hearing_at';
+                    echo json_encode(['success' => false, 'message' => $assignee['name'] . ' веќе има настан во тој термин: ' . format_conflict($conflict, $key, 'ends_at')]);
+                    exit;
+                }
+            }
+            $ok = $cases->updateHearing($companyId, $hid, (int) (current_user()['id'] ?? 0), current_role() === 'admin', $title, $at, trim($_POST['location'] ?? ''), trim($_POST['note'] ?? ''), $kind, $end ?: null);
             echo json_encode(['success' => $ok, 'message' => $ok ? 'Настанот е ажуриран.' : 'Немате дозвола или невалидни податоци.']);
             break;
         }

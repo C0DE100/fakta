@@ -102,7 +102,7 @@ $canManage = current_role() !== 'praktikant';
          Create / Edit case modal
     ============================================================ -->
     <div id="caseModal" class="modal-overlay" aria-hidden="true">
-        <div class="modal-box modal-box--wide" role="dialog" aria-modal="true">
+        <div class="modal-box modal-box--wide modal-box--xwide modal-scroll" role="dialog" aria-modal="true">
             <div class="modal-header">
                 <div>
                     <h2 class="modal-title" id="caseModalTitle">Нов предмет</h2>
@@ -148,6 +148,13 @@ $canManage = current_role() !== 'praktikant';
                                 </select>
                             </div>
                         </div>
+                        <div class="case-field">
+                            <label for="caseStatus" class="case-label">Статус</label>
+                            <select id="caseStatus" class="field">
+                                <option value="active">Активен</option>
+                                <option value="waiting">Во чекање</option>
+                            </select>
+                        </div>
                         <div class="case-field" id="adminNumberRow">
                             <label for="caseAdminNumber" class="case-label">Административен број <span class="case-opt">(опционално)</span></label>
                             <input type="text" class="field" id="caseAdminNumber" placeholder="пр. НПН 123/23, ВПП 123/24...">
@@ -159,6 +166,11 @@ $canManage = current_role() !== 'praktikant';
                                 <div id="officialSuggest" class="basis-suggest" style="display:none"></div>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="case-field" style="margin-top:0.85rem">
+                        <label class="case-label">Боја на картичка <span class="case-opt">(опционално)</span></label>
+                        <div class="case-color-picker" id="caseColorPicker"></div>
                     </div>
                 </section>
 
