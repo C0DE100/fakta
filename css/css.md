@@ -39,11 +39,11 @@ Classes marked **→ Tailwind** have been removed from style.css and are now app
 ## Sidebar
 | Class | Use |
 |-------|-----|
-| `.sidebar` | Left sticky sidebar, `width: 15rem`; `overflow: hidden`; CSS width transition |
+| `.sidebar` | Left sticky sidebar, `width: 13rem`; `overflow: hidden`; CSS width transition |
 | `.sidebar.collapsed` | Collapsed state — width shrinks to `3.5rem` |
 | `.sidebar-header` | Flex row, right-aligned, holds the toggle button |
-| `.sidebar-toggle` | 28×28px chevron button; transitions color |
-| `.sidebar-toggle svg` | Chevron icon; rotates 180° when `.collapsed` |
+| `.sidebar-toggle` | 28×28px toggle button; transitions color |
+| `.hamburger` / `.hamburger span` | 3 CSS bars that morph: **X** when open, **hamburger** when `.sidebar.collapsed` |
 | `.sidebar-nav` | Flex column of navigation buttons |
 | `.sidebar-btn` | Full-width text nav button with hover highlight; works on `<button>` and `<a>` |
 | `.sidebar-btn--active` | Active/current-page highlight (set server-side via PHP) |

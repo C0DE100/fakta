@@ -23,6 +23,9 @@ $(function () {
     var members = [];     // [{id, name, role}]
     var selectedAssignees = {}; // id -> true
     var editingId = null;
+    // The full case list/grid only exists on predmeti.php. On predmet.php the
+    // same modal is reused for in-place editing, so list-only init is skipped.
+    var IS_LIST_PAGE = $('#casesList').length > 0;
     var activeClientRow = null;  // the party row that opened the quick-client modal
     var searchTimer = null, basisTimer = null;
     var selectedColor = null;
@@ -588,6 +591,9 @@ $(function () {
             if (!res.success) { toast(res.message || 'Грешка.', 'error'); return; }
             var c = res.data;
             resetModal();
+            // On the detail page editing an existing case never offers the
+            // create-only initial-note block.
+            if (!IS_LIST_PAGE) $('#caseNoteBlock').hide();
             editingId = c.id;
             $('#caseId').val(c.id);
             $('#caseBasis').val(c.basis || '');
@@ -613,10 +619,12 @@ $(function () {
             renderSelectedAssignees();
 
             $('#caseModalTitle').text('Уреди предмет ' + (c.case_number || ''));
-            $('#caseModalSub').text('Ажурирај податоци, странки и задолжени');
+            // $('#caseModalSub').text('Ажурирај податоци, странки и задолжени');
             openModal();
         });
     }
+    // Let the detail page (predmet.php) open the edit modal in place.
+    window.faktaOpenCaseEdit = openEdit;
 
     function collectParties() {
         var out = [];
@@ -668,7 +676,11 @@ $(function () {
 
         var $btn = $('#caseSaveBtn').prop('disabled', true).text('Се зачувува...');
         post(action, data).done(function (r) {
-            if (r.success) { clearDraft(); closeModal(true); toast(r.message, 'success'); state.page = 1; loadList(); }
+            if (r.success) {
+                clearDraft(); closeModal(true); toast(r.message, 'success');
+                if (IS_LIST_PAGE) { state.page = 1; loadList(); }
+                else setTimeout(function () { location.reload(); }, 400);
+            }
             else showAlert(r.message || 'Грешка.');
         }).fail(function () { showAlert('Грешка при комуникација.'); })
           .always(function () { $btn.prop('disabled', false).text('Зачувај'); });
@@ -943,6 +955,13 @@ $(function () {
     });
 
     /* ---------------- init ---------------- */
+    if (!IS_LIST_PAGE) {
+        // Detail page (predmet.php): only the edit modal is reused. Load the
+        // members/clients it needs; everything list-related stays dormant.
+        $.when(loadMembers(), loadClients());
+        return;
+    }
+
     renderDraftBanner();
     $.when(loadMembers(), loadClients()).always(function () {
         // Deep-link: predmet.php "Уреди" sends ?edit=ID — open the edit modal.

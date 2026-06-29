@@ -94,10 +94,10 @@ if ($case) {
                 </div>
                 <?php if ($canManage): ?>
                 <div class="case-detail-actions">
-                    <a href="predmeti.php?edit=<?= (int) $case['id'] ?>" class="btn-secondary">
+                    <button type="button" id="caseEditBtn" class="btn-secondary">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                         Уреди
-                    </a>
+                    </button>
                     <?php if (empty($case['archived_at'])): ?>
                         <button class="btn-secondary" id="caseArchiveBtn">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="m9 13 3 3 3-3"/><path d="M12 16V8"/></svg>
@@ -159,8 +159,8 @@ if ($case) {
                                     <?php if (!empty($p['role'])): ?><span class="case-role-tag"><?= htmlspecialchars($p['role']) ?></span><?php endif; ?>
                                     <?php if (!empty($p['opposing_representative'])): ?>
                                         <span class="case-lawyer">
-                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11l2-7H6l2 7"/><path d="M12 4v16"/><path d="M8 20h8"/></svg>
-                                            застап. <?= htmlspecialchars($p['opposing_representative']) ?>
+                                            
+                                            застапник: <strong><?= htmlspecialchars($p['opposing_representative']) ?></strong>
                                         </span>
                                     <?php endif; ?>
                                 </div>
@@ -373,12 +373,12 @@ if ($case) {
                         <input type="text" id="todoDue" class="field todo-due-input" placeholder="Рок (опц.)" title="Рок (опц.)">
                         <select id="todoAssignee" class="field todo-assignee-select" title="Доделено на (опц.)">
                             <option value="">Никој</option>
-                            <?php foreach ($case['assignees'] as $a): if ($isPraktikant && (int) $a['id'] !== $myId) continue; ?>
+                            <?php foreach ($members as $a): if ($isPraktikant && (int) $a['id'] !== $myId) continue; ?>
                                 <option value="<?= (int) $a['id'] ?>"><?= htmlspecialchars($a['name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <textarea id="todoNote" class="field todo-note-input" rows="2" placeholder="Забелешка (опц.)"></textarea>
+                    <textarea id="todoNote" class="field todo-note-input" rows="2" placeholder="Белешка (опц.)"></textarea>
                     <div class="hearing-compose-foot">
                         <button type="button" id="todoCancelBtn" class="btn-modal-cancel">Откажи</button>
                         <button type="button" id="todoAddBtn" class="btn-modal-save">Додај</button>
@@ -439,9 +439,22 @@ if ($case) {
     </div>
     </div>
 
+    <?php if ($case && $canManage) include 'includes/case-modal.php'; ?>
+
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="js/app.js"></script>
     <?php if ($case && $canManage): ?>
+    <!-- Reuse the cases create/edit modal for in-place editing of this case. -->
+    <script>window.FAKTA_CAN_MANAGE = true;</script>
+    <script src="js/predmeti.js"></script>
+    <script>
+    $(function () {
+        // "Уреди" opens the shared edit modal here instead of bouncing to predmeti.php.
+        $('#caseEditBtn').on('click', function () {
+            if (window.faktaOpenCaseEdit) window.faktaOpenCaseEdit(<?= (int) $case['id'] ?>);
+        });
+    });
+    </script>
     <script>
     $(function () {
         var API = 'api/case_api.php';
@@ -877,11 +890,11 @@ if ($case) {
         });
 
         /* ---------------- To-do (задачи) ---------------- */
-        // A to-do can only be assigned to someone доделен on this case (CASE_ASSIGNEES,
-        // kept fresh because inline assignee add/remove reloads the page).
+        // A to-do can be assigned to anyone in the company (MEMBERS). Praktikanti
+        // may only assign to themselves.
         function memberOptions(sel) {
             var o = '<option value="">Никој</option>';
-            CASE_ASSIGNEES.forEach(function (m) {
+            MEMBERS.forEach(function (m) {
                 if (IS_PRAKTIKANT && String(m.id) !== String(UID)) return; // praktikant: self only
                 o += '<option value="' + m.id + '"' + (String(m.id) === String(sel) ? ' selected' : '') + '>' + esc(m.name) + '</option>';
             });
@@ -1056,7 +1069,7 @@ if ($case) {
                 '<input type="text" class="field todo-edit-title">'
                 + '<div class="todo-edit-row"><input type="text" class="field todo-edit-due" placeholder="Рок (опц.)" value="' + (t.due_date ? String(t.due_date).slice(0, 10) : '') + '">'
                 + '<select class="field todo-edit-asg">' + memberOptions(t.assigned_to) + '</select></div>'
-                + '<textarea class="field todo-edit-note" rows="2" placeholder="Забелешка (опц.)"></textarea>'
+                + '<textarea class="field todo-edit-note" rows="2" placeholder="Белешка (опц.)"></textarea>'
                 + '<div class="note-compose-foot"><button class="btn-modal-cancel todo-cancel">Откажи</button><button class="btn-modal-save todo-save">Зачувај</button></div>'
             );
             fpDate($t.find('.todo-edit-due')[0]);

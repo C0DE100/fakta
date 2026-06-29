@@ -650,21 +650,11 @@ try {
             $role = current_role();
 
             if ($id > 0) {
-                // Case-linked: admins may attach to any case; вработени/практиканти
-                // only to cases assigned to them.
-                if ($role !== 'admin' && !$cases->isCaseAssignee($companyId, $id, $meId)) {
-                    http_response_code(403);
-                    echo json_encode(['success' => false, 'message' => 'Можете да додавате задачи само на предмети доделени на вас.']);
-                    exit;
-                }
-                // Praktikant can only assign tasks to themselves (or to no one).
+                // Case-linked: admins and вработени may add a task to ANY case and
+                // assign it to anyone in the company. Praktikanti may add to any
+                // case too, but only ever assigned to themselves.
                 if ($role === 'praktikant' && $asg > 0 && $asg !== $meId) {
                     echo json_encode(['success' => false, 'message' => 'Можете да доделувате задачи само на себе.']);
-                    exit;
-                }
-                // A to-do may only be assigned to someone доделен on that case.
-                if ($asg > 0 && !$cases->isCaseAssignee($companyId, $id, $asg)) {
-                    echo json_encode(['success' => false, 'message' => 'Задачата може да се додели само на лице доделено на предметот.']);
                     exit;
                 }
                 $caseRef  = $id;
@@ -697,20 +687,6 @@ try {
             break;
         }
 
-        case 'case_assignees': {
-            // The employees доделени to one case — the only valid to-do assignees.
-            // Non-admins may only inspect cases they're on (same rule as the picker).
-            $id   = (int) ($_GET['id'] ?? 0);
-            $meId = (int) (current_user()['id'] ?? 0);
-            if ($id <= 0) { echo json_encode(['success' => true, 'data' => []]); break; }
-            if (current_role() !== 'admin' && !$cases->isCaseAssignee($companyId, $id, $meId)) {
-                echo json_encode(['success' => false, 'message' => 'Немате пристап до овој предмет.', 'data' => []]);
-                break;
-            }
-            echo json_encode(['success' => true, 'data' => $cases->getAssigneeUsers($companyId, $id)]);
-            break;
-        }
-
         case 'set_todo_status': {
             $todoId = (int) ($_POST['todo_id'] ?? 0);
             $status = trim($_POST['status'] ?? '');
@@ -735,12 +711,7 @@ try {
                 echo json_encode(['success' => false, 'message' => 'Можете да доделувате задачи само на себе.']);
                 exit;
             }
-            $caseId = $cases->getTodoCaseId($companyId, $todoId);
-            // On a case to-do, the assignee must be someone доделен on that case.
-            if ($asg > 0 && $caseId !== null && !$cases->isCaseAssignee($companyId, $caseId, $asg)) {
-                echo json_encode(['success' => false, 'message' => 'Задачата може да се додели само на лице доделено на предметот.']);
-                exit;
-            }
+            $caseId  = $cases->getTodoCaseId($companyId, $todoId);
             $prevAsg = $cases->getTodoAssignedTo($companyId, $todoId);
             $ok = $cases->updateTodo($companyId, $todoId, (int) (current_user()['id'] ?? 0), current_role() === 'admin', $title, $due ?: null, $asg ?: null, $note ?: null);
             // Notify only on a genuine reassignment to a new person.

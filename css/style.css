@@ -916,6 +916,17 @@ a.client-info-row:hover { color: var(--accent); }
     overflow: hidden;
     text-overflow: ellipsis;
 }
+.nav-menu-role {
+    display: inline-block;
+    margin: 0.125rem 0;
+    padding: 0.0625rem 0.4375rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 999px;
+}
 .nav-menu-email {
     font-size: 0.75rem;
     color: #a8a29e;
@@ -1201,7 +1212,7 @@ body {
 .sidebar {
     position: relative;
     height: 100%;
-    width: 15rem;
+    width: 13rem;
     flex-shrink: 0;
     background: #ffffff;
     box-shadow: 1px 0 0 #e8e3dc, 2px 0 12px rgba(28, 25, 23, 0.05);
@@ -1217,17 +1228,24 @@ body {
     width: 3.5rem;
 }
 
+/* Suppress all sidebar transitions on first paint (restoring saved state) */
+.sidebar.no-anim,
+.sidebar.no-anim .hamburger span {
+    transition: none;
+}
+
 .sidebar-header {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    padding: 1rem 0.75rem 0.875rem;
+    justify-content: flex-start;
+    padding: 1rem 0.5rem 0.875rem;
     flex-shrink: 0;
 }
 
 .sidebar-toggle {
     width: 28px;
     height: 28px;
+    margin-left: 0.4375rem;
     padding: 0;
     background: none;
     border: none;
@@ -1246,14 +1264,34 @@ body {
     background-color: #f0efed;
 }
 
-.sidebar-toggle svg {
+/* Animated hamburger ⇄ X (X = sidebar open, hamburger = collapsed) */
+.hamburger {
+    position: relative;
+    display: block;
+    width: 18px;
+    height: 14px;
     flex-shrink: 0;
-    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
-
-.sidebar.collapsed .sidebar-toggle svg {
-    transform: rotate(180deg);
+.hamburger span {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    border-radius: 2px;
+    background: currentColor;
+    transition:
+        top       0.25s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+        opacity   0.18s linear;
 }
+/* Open state → X */
+.hamburger span:nth-child(1) { top: 6px; transform: rotate(45deg); }
+.hamburger span:nth-child(2) { top: 6px; opacity: 0; }
+.hamburger span:nth-child(3) { top: 6px; transform: rotate(-45deg); }
+/* Collapsed state → hamburger */
+.sidebar.collapsed .hamburger span:nth-child(1) { top: 0;  transform: rotate(0); }
+.sidebar.collapsed .hamburger span:nth-child(2) { top: 6px; opacity: 1; }
+.sidebar.collapsed .hamburger span:nth-child(3) { top: 12px; transform: rotate(0); }
 
 .sidebar-nav {
     display: flex;
@@ -1632,6 +1670,7 @@ body.modal-open {
 }
 [data-theme="dark"] .nav-menu-name  { color: #ededf0; }
 [data-theme="dark"] .nav-menu-email { color: #606068; }
+[data-theme="dark"] .nav-menu-role  { color: var(--accent); background: var(--accent-soft); }
 [data-theme="dark"] .nav-menu-sep   { background: #2b2b31; }
 [data-theme="dark"] .nav-menu-item       { color: #c4c4cc; }
 [data-theme="dark"] .nav-menu-item svg   { color: #606068; }
@@ -4811,7 +4850,7 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .case-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 0.5rem; }
 @media (max-width: 720px) { .case-detail-grid { grid-template-columns: 1fr; } }
 .case-detail-block { padding: 1rem 0; border-top: 1px solid #f0ece4; }
-.case-block-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #78716c; margin-bottom: 0.65rem; }
+.case-block-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #78716c; }
 
 .case-party-item { padding: 0.55rem 0; border-bottom: 1px dashed #f0ece4; }
 .case-party-item:last-child { border-bottom: none; }
@@ -6307,6 +6346,15 @@ span.flatpickr-day.selected:hover { background: var(--accent-hover); }
 [data-theme="dark"] .combo-opt-label { color: #ededf0; }
 .combo-sub { font-size: 0.74rem; color: #a8a29e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .combo-empty { padding: 0.55rem; text-align: center; font-size: 0.8rem; color: #b5afa5; }
+
+/* Party pills inside a combo result (home-page "Нова задача" case picker). */
+.combo-sub--pills { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; margin-top: 0.15rem; white-space: normal; overflow: visible; }
+.combo-pill { display: inline-flex; align-items: center; max-width: 13rem; padding: 0.05rem 0.4rem; border-radius: 0.5rem;
+    font-size: 0.7rem; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.combo-pill--client { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-border); }
+.combo-pill--opp { background: #fdecea; color: #b4453a; border: 1px solid #f2c4bd; }
+[data-theme="dark"] .combo-pill--opp { background: #2e2020; color: #e6a59c; border-color: #5a3a36; }
+.combo-pill-sep { color: #c9c2b6; font-size: 0.7rem; padding: 0 0.05rem; }
 
 /* Date pickers inside these modals render their calendar inline (static),
    so the modal box must not clip it. The flatpickr wrapper replaces the

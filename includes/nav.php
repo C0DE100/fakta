@@ -3,13 +3,20 @@ $navUser     = function_exists('current_user') ? current_user() : null;
 $navCompany  = $navUser['company_name'] ?? '';
 $navName     = $navUser['name'] ?? '';
 $navEmail    = $navUser['email'] ?? '';
+$navRole     = function_exists('current_role') ? current_role() : ($navUser['role'] ?? '');
+$navRoleLabel = [
+    'admin'       => 'Админ',
+    'employee'    => 'Вработен',
+    'praktikant'  => 'Практикант',
+    'super_admin' => 'Супер админ',
+][$navRole] ?? '';
 $navInitials = function_exists('fakta_initials') ? fakta_initials($navName) : '?';
 $navColor    = function_exists('fakta_avatar_color') ? fakta_avatar_color($navName) : ['bg' => '#e7e5e4', 'fg' => '#57534e'];
 $logoutUrl   = function_exists('fakta_url') ? fakta_url('logout.php') : 'logout.php';
 $settingsUrl = function_exists('fakta_url') ? fakta_url('podesuvanja.php') : 'podesuvanja.php';
 ?>
 <nav class="bg-white site-nav">
-    <div class="nav-inner max-w-7xl mx-auto px-7 py-5 flex items-center justify-between">
+    <div class="nav-inner w-full px-5 py-5 flex items-center justify-between">
         <a href="index.php" class="font-semibold tracking-tight text-slate-900 flex items-center gap-2 no-underline" style="text-decoration:none;color:inherit;">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/>
@@ -57,6 +64,7 @@ $settingsUrl = function_exists('fakta_url') ? fakta_url('podesuvanja.php') : 'po
                         </div>
                         <div class="nav-menu-head-text">
                             <?php if ($navName !== ''): ?><div class="nav-menu-name"><?= htmlspecialchars($navName) ?></div><?php endif; ?>
+                            <?php if ($navRoleLabel !== ''): ?><div class="nav-menu-role"><?= htmlspecialchars($navRoleLabel) ?></div><?php endif; ?>
                             <?php if ($navEmail !== ''): ?><div class="nav-menu-email"><?= htmlspecialchars($navEmail) ?></div><?php endif; ?>
                         </div>
                     </div>

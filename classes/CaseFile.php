@@ -1181,7 +1181,7 @@ class CaseFile
     /**
      * Add a to-do. $caseId is the предмет it belongs to, or null for a personal
      * (non-case) task. $dueDate is 'YYYY-MM-DD' or null, $note an optional
-     * забелешка. Returns id, or null on invalid title / non-existent case.
+     * белешка. Returns id, or null on invalid title / non-existent case.
      */
     public function addTodo(int $companyId, ?int $caseId, ?int $createdBy, string $title, ?string $dueDate, ?int $assignedTo, ?string $note = null): ?int
     {
@@ -1215,20 +1215,19 @@ class CaseFile
     /**
      * Active (non-archived, non-deleted) cases a user may attach a to-do to:
      * every case for admins, only ones they're assigned to otherwise. Optional
-     * substring $search (rides the denormalized search_text, like the listing)
-     * and a hard $limit keep the home-page picker fast on big tenants. Returns
-     * [{id, case_number, client_name}].
+     * substring $search (rides the denormalized search_text, like the listing —
+     * so it matches by основ, предмет број and client/opponent names) and a hard
+     * $limit keep the home-page picker fast on big tenants. Returns
+     * [{id, case_number, basis, client_parties[], opponent_parties[]}].
      */
     public function getAssignableCases(int $companyId, int $userId, bool $isAdmin, string $search = '', int $limit = 25): array
     {
         $limit  = max(1, min(50, $limit));
+        // A to-do may be attached to ANY active case in the company, regardless of
+        // role or whether the user is доделен on it. ($userId/$isAdmin are kept for
+        // signature compatibility.)
         $conds  = ['c.company_id = :cid', 'c.deleted_at IS NULL', 'c.archived_at IS NULL'];
         $params = [':cid' => $companyId];
-        if (!$isAdmin) {
-            $conds[]        = 'EXISTS (SELECT 1 FROM case_assignees ca
-                                       WHERE ca.case_id = c.id AND ca.user_id = :uid AND ca.deleted_at IS NULL)';
-            $params[':uid'] = $userId;
-        }
         $search = trim($search);
         if ($search !== '') {
             $conds[]      = 'c.search_text LIKE :q';
@@ -1236,19 +1235,16 @@ class CaseFile
         }
         $where = implode(' AND ', $conds);
         $stmt = $this->db->prepare(
-            "SELECT c.id, " . self::CASE_NUMBER_SQL . " AS case_number,
-                    COALESCE(NULLIF(pc.name, ''),
-                             CASE WHEN cl.type = 'company' THEN cl.company_name ELSE cl.full_name END
-                    ) AS client_name
+            "SELECT c.id, " . self::CASE_NUMBER_SQL . " AS case_number, c.basis
              FROM cases c
-             LEFT JOIN case_parties pc ON pc.case_id = c.id AND pc.side = 'client' AND pc.is_primary = 1 AND pc.deleted_at IS NULL
-             LEFT JOIN clients cl ON cl.id = pc.client_id
              WHERE {$where}
              ORDER BY c.case_year DESC, c.case_seq DESC
              LIMIT {$limit}"
         );
         $stmt->execute($params);
-        return $stmt->fetchAll();
+        $rows = $stmt->fetchAll();
+        $this->attachParties($companyId, $rows);
+        return $rows;
     }
 
     /** To-dos on a case: active statuses first, then by due date, with names. */

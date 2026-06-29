@@ -362,7 +362,7 @@ CREATE TABLE IF NOT EXISTS case_todos (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 ");
 safe($pdo, "ALTER TABLE case_todos ADD COLUMN deleted_at DATETIME NULL");
-// Free-text забелешка per to-do, and allow case_id = NULL for personal (non-case) to-dos.
+// Free-text белешка per to-do, and allow case_id = NULL for personal (non-case) to-dos.
 safe($pdo, "ALTER TABLE case_todos ADD COLUMN note TEXT NULL AFTER due_date");
 safe($pdo, "ALTER TABLE case_todos MODIFY COLUMN case_id INT UNSIGNED NULL");
 

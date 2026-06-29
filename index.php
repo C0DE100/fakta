@@ -116,14 +116,14 @@ $userName = current_user()['name'] ?? '';
                         <div class="combo-menu" id="dtCaseMenu" hidden></div>
                     </div>
                     <div class="combo" id="dtAsgCombo">
-                        <input type="text" id="dtAsgInput" class="field combo-input" placeholder="Прво избери предмет…" autocomplete="off" disabled>
+                        <input type="text" id="dtAsgInput" class="field combo-input" placeholder="Додели на…" autocomplete="off" disabled>
                         <div class="combo-menu" id="dtAsgMenu" hidden></div>
                     </div>
                 </div>
                 <div class="todo-modal-row">
                     <input type="text" id="dtDue" class="field todo-due-input" placeholder="Рок (опц.)" title="Рок (опц.)">
                 </div>
-                <textarea id="dtNote" class="field todo-note-input" rows="2" placeholder="Забелешка (опц.)"></textarea>
+                <textarea id="dtNote" class="field todo-note-input" rows="2" placeholder="Белешка (опц.)"></textarea>
                 <div class="hearing-compose-foot">
                     <button type="button" id="dtCancel" class="btn-modal-cancel">Откажи</button>
                     <button type="button" id="dtAdd" class="btn-modal-save">Додај</button>
@@ -404,9 +404,9 @@ $userName = current_user()['name'] ?? '';
         }
 
         /* ---- "Нова задача" modal: create a to-do straight from the home page.
-           Unlinked → a personal task assigned to me (наслов / рок / забелешка).
-           Linked → pick a предмет (admins: any; others: only theirs) and assign
-           it to someone доделен on that case. ---- */
+           Unlinked → a personal task assigned to me (наслов / рок / белешка).
+           Linked → pick any предмет and assign it to anyone in the company
+           (interns: only themselves); case and assignee in either order. ---- */
 
         /* Reusable searchable combobox. opts:
              input/menu  — jQuery els
@@ -429,9 +429,11 @@ $userName = current_user()['name'] ?? '';
                     return;
                 }
                 opts.menu.html(items.map(function (it, i) {
+                    var sub = it.subHtml ? '<span class="combo-sub combo-sub--pills">' + it.subHtml + '</span>'
+                        : (it.sub ? '<span class="combo-sub">' + esc(it.sub) + '</span>' : '');
                     return '<div class="combo-opt" data-i="' + i + '">'
                         + '<span class="combo-opt-label">' + esc(it.label) + '</span>'
-                        + (it.sub ? '<span class="combo-sub">' + esc(it.sub) + '</span>' : '')
+                        + sub
                         + '</div>';
                 }).join('')).prop('hidden', false);
             }
@@ -480,8 +482,10 @@ $userName = current_user()['name'] ?? '';
             });
         })();
 
-        // Assignees of the currently-picked case (filtered client-side in its combo).
-        var dtAsgList = [];
+        // A to-do can be assigned to anyone in the company (independent of the
+        // picked case). Interns may only assign to themselves. Loaded once and
+        // cached; filtered client-side in the combo.
+        var dtAsgList = [], dtMembersLoaded = false;
         var asgCombo = makeCombo({
             input: $('#dtAsgInput'), menu: $('#dtAsgMenu'),
             source: function (q, done) {
@@ -490,30 +494,42 @@ $userName = current_user()['name'] ?? '';
                     .map(function (m) { return { value: m.id, label: m.name }; }));
             }
         });
+        function loadDtMembers() {
+            if (dtMembersLoaded) { return; }
+            asgCombo.enable(false); asgCombo.placeholder('Се вчитува…');
+            $.ajax({ url: API, data: { action: 'members' }, dataType: 'json' }).done(function (r) {
+                var list = (r && r.data) || [];
+                if (window.FAKTA_ROLE === 'praktikant') {
+                    list = list.filter(function (m) { return String(m.id) === String(window.FAKTA_UID); });
+                }
+                dtAsgList = list.map(function (m) { return { id: m.id, name: m.name }; });
+                dtMembersLoaded = true;
+                if (!dtAsgList.length) { asgCombo.enable(false); asgCombo.placeholder('Нема корисници'); }
+                else { asgCombo.enable(true); asgCombo.placeholder('Додели на…'); }
+            }).fail(function () { asgCombo.enable(false); asgCombo.placeholder('Грешка при вчитување'); });
+        }
+        // Party names → pills. Our clients first, then a separator, then opponents.
+        function partyPills(clients, opponents) {
+            function pills(list, cls) {
+                return (list || []).map(function (p) {
+                    return '<span class="combo-pill ' + cls + '">' + esc(p.name || '') + '</span>';
+                }).join('');
+            }
+            var c = pills(clients, 'combo-pill--client');
+            var o = pills(opponents, 'combo-pill--opp');
+            if (c && o) return c + '<span class="combo-pill-sep">|</span>' + o;
+            return c + o;
+        }
         var caseCombo = makeCombo({
             input: $('#dtCaseInput'), menu: $('#dtCaseMenu'),
             source: function (q, done) {
                 $.ajax({ url: API, data: { action: 'assignable_cases', q: q, limit: 25 }, dataType: 'json' })
                     .done(function (r) {
                         done(((r && r.data) || []).map(function (c) {
-                            return { value: c.id, label: 'Предмет ' + c.case_number, sub: c.client_name || '' };
+                            var label = c.basis ? c.basis + ' - ' + c.case_number : c.case_number;
+                            return { value: c.id, label: label, subHtml: partyPills(c.client_parties, c.opponent_parties) };
                         }));
                     }).fail(function () { done([]); });
-            },
-            onSelect: function (it) {
-                // Reset the assignee combo whenever the case changes.
-                asgCombo.clear(); dtAsgList = [];
-                if (!it) { asgCombo.enable(false); asgCombo.placeholder('Прво избери предмет…'); return; }
-                asgCombo.enable(false); asgCombo.placeholder('Се вчитува…');
-                $.ajax({ url: API, data: { action: 'case_assignees', id: it.value }, dataType: 'json' }).done(function (r) {
-                    var list = (r && r.data) || [];
-                    if (window.FAKTA_ROLE === 'praktikant') {
-                        list = list.filter(function (m) { return String(m.id) === String(window.FAKTA_UID); });
-                    }
-                    dtAsgList = list.map(function (m) { return { id: m.id, name: m.name }; });
-                    if (!dtAsgList.length) { asgCombo.enable(false); asgCombo.placeholder('Нема доделени лица на предметот'); }
-                    else { asgCombo.enable(true); asgCombo.placeholder('Додели на…'); }
-                }).fail(function () { asgCombo.enable(false); asgCombo.placeholder('Грешка при вчитување'); });
             }
         });
 
@@ -522,8 +538,8 @@ $userName = current_user()['name'] ?? '';
             if (fpDtDue) fpDtDue.clear(); else $('#dtDue').val('');
             $('#dtLink').prop('checked', false);
             $('#dtCaseWrap').prop('hidden', true);
-            caseCombo.clear(); asgCombo.clear(); dtAsgList = [];
-            asgCombo.enable(false); asgCombo.placeholder('Прво избери предмет…');
+            caseCombo.clear(); asgCombo.clear();
+            if (dtMembersLoaded) { asgCombo.enable(dtAsgList.length > 0); asgCombo.placeholder(dtAsgList.length ? 'Додели на…' : 'Нема корисници'); }
         }
         function dtClose() {
             $('#dashTodoModal').removeClass('open');
@@ -543,7 +559,9 @@ $userName = current_user()['name'] ?? '';
         $('#dtLink').on('change', function () {
             var on = this.checked;
             $('#dtCaseWrap').prop('hidden', !on);
-            if (on) setTimeout(function () { $('#dtCaseInput').focus(); }, 40);
+            // Make the assignee combo usable right away — the user may pick a person
+            // before a case (and in either order). Don't auto-open the case menu.
+            if (on) loadDtMembers();
         });
         $('#dtTitle').on('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('#dtAdd').click(); } });
         $('#dtAdd').on('click', function () {
@@ -553,7 +571,7 @@ $userName = current_user()['name'] ?? '';
             if ($('#dtLink').is(':checked')) {
                 var c = caseCombo.value(), a = asgCombo.value();
                 if (!c) { if (window.toast) window.toast('Избери предмет.', 'error'); return; }
-                if (!a) { if (window.toast) window.toast('Додели ја задачата на лице од предметот.', 'error'); return; }
+                if (!a) { if (window.toast) window.toast('Додели ја задачата на лице.', 'error'); return; }
                 data.id = c.value;
                 data.assigned_to = a.value;
             }
