@@ -257,6 +257,7 @@ $loginUrl = fakta_url('login.php');
                 </div>
             </div>
         </section>
+        TESTTTTTTTTTTTTTTTTTTTTTTT
 
         <!-- FEATURE: Календар -->
         <section class="feat rev">
