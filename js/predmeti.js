@@ -23,6 +23,7 @@ $(function () {
     var members = [];     // [{id, name, role}]
     var selectedAssignees = {}; // id -> true
     var editingId = null;
+    var editSnapshot = null;   // form state when an existing case was opened, to detect unsaved edits
     // The full case list/grid only exists on predmeti.php. On predmet.php the
     // same modal is reused for in-place editing, so list-only init is skipped.
     var IS_LIST_PAGE = $('#casesList').length > 0;
@@ -351,22 +352,80 @@ $(function () {
     /* ---------------- create / edit modal ---------------- */
 
     function openModal() { $('#caseModal').addClass('open').removeAttr('aria-hidden'); $('body').addClass('modal-open'); }
-    function closeModal(skipDraft) {
-        if (!skipDraft) saveDraftIfNeeded();
+    function doCloseModal() {
+        clearTimeout(draftSaveTimer);   // cancel any pending auto-save
         $('#caseModal').removeClass('open').attr('aria-hidden', 'true'); $('body').removeClass('modal-open');
     }
-
-    /* ---------------- draft (new-case only, saved to localStorage on close) ---------------- */
-
-    var DRAFT_KEY = 'fakta_case_draft';
-
-    function loadDraft() {
-        try { var raw = localStorage.getItem(DRAFT_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+    // force=true skips the dirty-check (used after a successful save). Otherwise,
+    // closing with unsaved work warns first (same prompt for new + existing cases).
+    // The draft itself is auto-saved while typing; an explicit close discards it,
+    // so the docked pill disappears. To KEEP a draft, navigate away instead.
+    function closeModal(force) {
+        if (!force) {
+            var dirty = editingId ? isFormDirty() : formHasContent();
+            if (dirty) { promptUnsavedClose(); return; }
+        }
+        if (!editingId) clearDraft();   // closing a new case abandons its draft → pill gone
+        doCloseModal();
     }
-    function clearDraft() {
-        try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
-        renderDraftBanner();
+
+    // Minimize: park the new-case draft and dock the pill, no confirm. This is
+    // the only "keep for later" gesture — X / Откажи / Esc / backdrop discard.
+    function minimizeModal() {
+        saveDraftIfNeeded();   // persist now so the pill is the genie's landing target
+        var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reduce) { doCloseModal(); return; }
+        var $ov = $('#caseModal');
+        $ov.addClass('is-minimizing');   // genie: box shrinks toward the bottom-right pill
+        setTimeout(function () {
+            doCloseModal();              // hide first to avoid a full-size flash
+            $ov.removeClass('is-minimizing');
+        }, 400);
     }
+
+    // Does the new-case form have anything worth keeping as a draft?
+    function formHasContent() {
+        var parties = collectParties();
+        return !!($('#caseBasis').val().trim() || $('#caseValue').val().trim()
+            || $('#caseAdminNumber').val().trim() || $('#caseOfficialPerson').val().trim()
+            || $('#caseInitialNote').val().trim() || parties.length
+            || Object.keys(selectedAssignees).length);
+    }
+
+    // Snapshot of every editable field — compared to detect unsaved edits.
+    function currentFormState() {
+        return JSON.stringify({
+            basis: $('#caseBasis').val().trim(),
+            value: $('#caseValue').val().trim(),
+            currency: $('#caseCurrency').val(),
+            status: $('#caseStatus').val(),
+            color: selectedColor || '',
+            admin: $('#caseAdminNumber').val().trim(),
+            official: $('#caseOfficialPerson').val().trim(),
+            parties: collectParties(),
+            assignees: Object.keys(selectedAssignees).sort()
+        });
+    }
+    function isFormDirty() { return editSnapshot !== null && currentFormState() !== editSnapshot; }
+    function promptUnsavedClose() {
+        confirmDialog({
+            title: 'Незачувани промени', danger: true,
+            message: 'Имаш промени што не се зачувани. Ако излезеш сега, тие ќе бидат изгубени.',
+            confirmText: 'Излези без зачувување', cancelText: 'Остани',
+            onConfirm: function () { closeModal(true); }
+        });
+    }
+
+    /* ---------------- draft (new-case only, saved to localStorage on close) ----------------
+       The draft DATA lives here (the case modal does); the docked pill that shows
+       it on every page is owned by js/case-draft.js (window.FaktaCaseDraft). */
+
+    var DRAFT_KEY = window.FaktaCaseDraft.KEY;
+
+    function loadDraft() { return window.FaktaCaseDraft.get(); }
+    function clearDraft() { clearTimeout(draftSaveTimer); window.FaktaCaseDraft.clear(); }
+    function renderDraftPill() { window.FaktaCaseDraft.refresh(); }
+
     function saveDraftIfNeeded() {
         if (editingId) return; // only draft brand-new, unsaved cases
         var parties = collectParties();
@@ -384,12 +443,24 @@ $(function () {
             || draft.official_person || draft.note || parties.length || draft.assignees.length;
         if (!hasContent) { clearDraft(); return; }
         try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch (e) {}
-        renderDraftBanner();
+        renderDraftPill();
     }
-    function renderDraftBanner() {
-        $('#caseDraftBanner').toggle(!!loadDraft());
+
+    // Auto-save the new-case draft while the user works (debounced), the way the
+    // "Користи шаблон" workspace persists values as you type. Editing an existing
+    // case never drafts.
+    var draftSaveTimer = null;
+    function scheduleDraftSave() {
+        if (editingId) return;
+        clearTimeout(draftSaveTimer);
+        draftSaveTimer = setTimeout(saveDraftIfNeeded, 400);
     }
-    $('#caseDraftResume').on('click', function () {
+    $('#caseForm').on('input change', scheduleDraftSave);
+
+    // Re-open the saved draft in the create modal. Exposed (on the list page only)
+    // so the global pill can resume in place; from other pages the pill navigates
+    // here with ?resume_draft=1 and init() calls this.
+    function resumeDraft() {
         var d = loadDraft();
         if (!d) return;
         resetModal();
@@ -407,14 +478,7 @@ $(function () {
         (d.assignees || []).forEach(function (uid) { selectedAssignees[uid] = true; });
         renderSelectedAssignees();
         openModal();
-    });
-    $('#caseDraftDiscard').on('click', function () {
-        confirmDialog({
-            title: 'Отфрли нацрт', message: 'Недовршениот предмет ќе биде избришан. Продолжи?',
-            confirmText: 'Отфрли', cancelText: 'Откажи',
-            onConfirm: clearDraft
-        });
-    });
+    }
 
     function clientPartyRow(party) {
         party = party || {};
@@ -506,10 +570,12 @@ $(function () {
         $('#assigneeSearch').val('').focus();
         renderSelectedAssignees();
         renderAssigneeDropdown('');
+        scheduleDraftSave();
     });
     $('#assigneeSelected').on('click', '.assignee-tag-x', function () {
         delete selectedAssignees[$(this).data('uid')];
         renderSelectedAssignees();
+        scheduleDraftSave();
     });
 
     $('[data-add-party]').on('click', function () {
@@ -524,6 +590,7 @@ $(function () {
         ($group.length ? $group : $(this).closest('.case-party-row')).remove();
         // keep at least one client row present
         if ($list.attr('id') === 'clientPartyList' && !$list.children().length) $list.append(clientPartyRow());
+        scheduleDraftSave();
     });
 
     // ---- client party: searchable text input + dropdown ----
@@ -540,6 +607,7 @@ $(function () {
         $row.attr('data-client-id', $(this).data('id'));
         $row.find('.party-client-search').val($(this).data('name'));
         $row.find('.party-client-dropdown').hide();
+        scheduleDraftSave();
     });
     $('#caseForm').on('mousedown', '.party-client-drop-new', function (e) {
         e.preventDefault();
@@ -563,6 +631,7 @@ $(function () {
 
     function resetModal() {
         editingId = null;
+        editSnapshot = null;
         $('#caseId').val('');
         $('#caseForm')[0].reset();
         $('#caseCurrency').val('ден');
@@ -577,20 +646,41 @@ $(function () {
         $('#assigneeSearch').val('');
         renderSelectedAssignees();
         $('#caseModalTitle').text('Нов предмет');
-        $('#caseModalSub').text('Пополни ги полињата по секции и зачувај');
+        // $('#caseModalSub').text('Пополни ги полињата по секции и зачувај');
+        $('#caseMinimize').show();   // minimize (keep as draft) only applies to new cases
         $('#basisSuggest, #officialSuggest').hide();
         setTimeout(function () { $('#caseBasis').focus(); }, 60);
     }
 
-    $('#caseNewBtn').on('click', function () { resetModal(); openModal(); });
+    $('#caseNewBtn').on('click', function () {
+        // Starting a fresh case while a draft is parked would overwrite it —
+        // confirm first so the user knows the draft will be lost.
+        if (loadDraft()) {
+            confirmDialog({
+                title: 'Имаш недовршен нацрт', danger: true,
+                message: 'Веќе имаш започнато нов предмет како нацрт. Ако започнеш нов празен предмет, тековниот нацрт ќе се избрише.',
+                confirmText: 'Започни нов', cancelText: 'Откажи',
+                onConfirm: function () { clearDraft(); resetModal(); openModal(); }
+            });
+            return;
+        }
+        resetModal(); openModal();
+    });
     $('[data-case-close]').on('click', function () { closeModal(); });
-    $('#caseModal').on('click', function (e) { if (e.target === this) closeModal(); });
+    $('#caseMinimize').on('click', minimizeModal);
+    // Clicking the backdrop is a soft dismiss: for a new case it parks the draft
+    // (same as minimize); when editing it confirms unsaved changes.
+    $('#caseModal').on('click', function (e) {
+        if (e.target !== this) return;
+        if (editingId) closeModal(); else minimizeModal();
+    });
 
     function openEdit(id) {
         $.ajax({ url: API, data: { action: 'get_one', id: id }, dataType: 'json' }).done(function (res) {
             if (!res.success) { toast(res.message || 'Грешка.', 'error'); return; }
             var c = res.data;
             resetModal();
+            $('#caseMinimize').hide();   // no draft concept when editing an existing case
             // On the detail page editing an existing case never offers the
             // create-only initial-note block.
             if (!IS_LIST_PAGE) $('#caseNoteBlock').hide();
@@ -620,6 +710,8 @@ $(function () {
 
             $('#caseModalTitle').text('Уреди предмет ' + (c.case_number || ''));
             // $('#caseModalSub').text('Ажурирај податоци, странки и задолжени');
+            // Baseline of the freshly-loaded form, to warn on accidental close.
+            editSnapshot = currentFormState();
             openModal();
         });
     }
@@ -950,6 +1042,9 @@ $(function () {
 
     $(document).on('keydown', function (e) {
         if (e.key !== 'Escape') return;
+        // An open confirm dialog handles its own Esc; don't let it bubble into
+        // re-triggering the unsaved-changes prompt.
+        if ($('.confirm-overlay').length) return;
         if ($('#quickClientModal').hasClass('open')) closeQuickClient();
         else if ($('#caseModal').hasClass('open')) closeModal();
     });
@@ -962,12 +1057,19 @@ $(function () {
         return;
     }
 
-    renderDraftBanner();
+    renderDraftPill();
+    // The global draft pill resumes in place on this page (instead of navigating).
+    window.faktaResumeCaseDraft = resumeDraft;
     $.when(loadMembers(), loadClients()).always(function () {
+        var params = new URLSearchParams(location.search);
         // Deep-link: predmet.php "Уреди" sends ?edit=ID — open the edit modal.
-        var editId = new URLSearchParams(location.search).get('edit');
+        var editId = params.get('edit');
         if (editId && CAN_MANAGE) {
             openEdit(editId);
+            history.replaceState(null, '', 'predmeti.php');
+        } else if (params.get('resume_draft')) {
+            // Arrived from the draft pill on another page — open the draft.
+            resumeDraft();
             history.replaceState(null, '', 'predmeti.php');
         }
     });

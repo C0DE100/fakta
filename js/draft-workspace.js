@@ -220,7 +220,7 @@
 
         ov.querySelector('#wsMinimize').addEventListener('click', minimize);
         ov.querySelector('#wsExpand').addEventListener('click', expand);
-        ov.querySelector('#wsClose').addEventListener('click', close);
+        ov.querySelector('#wsClose').addEventListener('click', confirmClose);
         ov.querySelector('#wsDownload').addEventListener('click', download);
         ov.querySelector('#wsClearVals').addEventListener('click', clearValues);
 
@@ -880,7 +880,25 @@
     }
 
     // opts.docId / opts.docName ⇒ open scoped to a single document.
+    // Guards against silently replacing a DIFFERENT draft that's already docked.
     function open(id, name, opts) {
+        opts = opts || {};
+        var docId = (opts.docId != null) ? parseInt(opts.docId, 10) : null;
+        var cur = activeDraft();
+        var curDocId = (cur && cur.docId != null) ? parseInt(cur.docId, 10) : null;
+        var different = cur && cur.id != null && (String(cur.id) !== String(id) || curDocId !== docId);
+        if (different && window.confirmDialog) {
+            window.confirmDialog({
+                title: 'Имаш активен нацрт', danger: true,
+                message: 'Веќе работиш на нацрт „' + (cur.docName || cur.name || 'нацрт') + '“. Ако започнеш нов, тековниот нацрт ќе се затвори.',
+                confirmText: 'Започни нов', cancelText: 'Откажи',
+                onConfirm: function () { doOpen(id, name, opts); }
+            });
+            return;
+        }
+        doOpen(id, name, opts);
+    }
+    function doOpen(id, name, opts) {
         opts = opts || {};
         ensureMounted();
         if (!ov) return;
@@ -912,8 +930,27 @@
     }
     function minimize() {
         if (!ov) return;
-        ov.classList.add('minimized');
         document.body.classList.remove('ws-open');
+        var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reduce) { ov.classList.add('minimized'); return; }
+        // Genie: the full-screen workspace shrinks toward the bottom-right, then
+        // docks as the pill (which fades in so the swap isn't abrupt).
+        ov.classList.add('ws-minimizing');
+        setTimeout(function () {
+            ov.classList.remove('ws-minimizing');
+            ov.classList.add('minimized', 'ws-docking');
+            setTimeout(function () { ov.classList.remove('ws-docking'); }, 220);
+        }, 400);
+    }
+    // The pill's X discards the draft — confirm first (matches the case-draft pill).
+    function confirmClose() {
+        if (!window.confirmDialog) { clearValues(); close(); return; }
+        window.confirmDialog({
+            title: 'Отфрли нацрт', danger: true,
+            message: 'Нацртот ќе биде затворен и внесените вредности ќе се избришат.',
+            confirmText: 'Отфрли', cancelText: 'Задржи',
+            onConfirm: function () { clearValues(); close(); }
+        });
     }
     function close() {
         flushSaves();

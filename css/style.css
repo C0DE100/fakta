@@ -1507,6 +1507,42 @@ body.modal-open {
     to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+/* ── Genie minimize: the window shrinks toward the bottom-right draft pill ──
+   Used by the case modal (.modal-box) and the "Користи шаблон" workspace
+   (.ws-overlay). The dimmed backdrop fades out as the box collapses. */
+.modal-overlay.is-minimizing { animation: faktaBackdropFade 0.4s ease forwards; }
+.modal-overlay.is-minimizing .modal-box {
+    transform-origin: bottom right;
+    animation: faktaGenieMinimize 0.4s cubic-bezier(0.5, 0, 0.85, 0.3) forwards;
+    pointer-events: none;
+}
+.ws-overlay.ws-minimizing {
+    transform-origin: bottom right;
+    animation: faktaGenieMinimizeFull 0.4s cubic-bezier(0.5, 0, 0.85, 0.3) forwards;
+}
+.ws-overlay.minimized.ws-docking { animation: faktaPillDockIn 0.2s ease forwards; }
+@keyframes faktaBackdropFade {
+    to { background: rgba(28,25,23,0); backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
+}
+@keyframes faktaGenieMinimize {
+    0%   { transform: translate(0,0) scale(1); opacity: 1; }
+    65%  { opacity: 0.55; }
+    100% { transform: translate(40vw, 48vh) scale(0.04); opacity: 0; }
+}
+@keyframes faktaGenieMinimizeFull {
+    0%   { transform: translate(0,0) scale(1); opacity: 1; }
+    65%  { opacity: 0.55; }
+    100% { transform: translate(10vw, 8vh) scale(0.05); opacity: 0; }
+}
+@keyframes faktaPillDockIn {
+    from { opacity: 0; transform: translateY(12px) scale(0.95); }
+    to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .modal-overlay.is-minimizing, .modal-overlay.is-minimizing .modal-box,
+    .ws-overlay.ws-minimizing, .ws-overlay.minimized.ws-docking { animation: none; }
+}
+
 /* Floating, non-blocking variant — used for "Внеси Променлива". The page is
    not dimmed or locked: the backdrop lets clicks/scroll pass through to the
    document, and the panel docks top-right just under the sticky toolbar so the
@@ -1557,6 +1593,7 @@ body.modal-open {
     font-weight: 600;
     color: #1c1917;
 }
+.modal-header-actions { display: flex; align-items: center; gap: 0.25rem; flex-shrink: 0; }
 .modal-close {
     display: inline-flex;
     align-items: center;
@@ -3649,17 +3686,21 @@ body.ws-open { overflow: hidden; }
 /* Minimized (docked) draft — Gmail-style pill at the bottom-right corner */
 .ws-overlay.minimized {
     inset: auto 1.5rem 0 auto;
-    width: 22rem;
+    width: 17rem;
     max-width: calc(100vw - 3rem);
     height: auto;
     border: 1px solid #e0dbd4;
     border-bottom: none;
-    border-radius: 0.6rem 0.6rem 0 0;
+    border-radius: 0.55rem 0.55rem 0 0;
     box-shadow: 0 -2px 18px rgba(28, 25, 23, 0.18);
     overflow: hidden;
 }
 .ws-overlay.minimized .ws-body { display: none; }
-.ws-overlay.minimized .ws-bar { cursor: pointer; }
+/* Docked pill is more compact than the full-screen toolbar. */
+.ws-overlay.minimized .ws-bar { cursor: pointer; padding: 0.4rem 0.55rem 0.4rem 0.7rem; gap: 0.5rem; }
+.ws-overlay.minimized .ws-title { font-size: 0.8rem; }
+.ws-overlay.minimized .ws-mode-badge { font-size: 0.625rem; padding: 0.12rem 0.4rem; }
+.ws-overlay.minimized .ws-winbtn { width: 1.6rem; height: 1.6rem; }
 .ws-overlay.minimized .ws-saved,
 .ws-overlay.minimized #wsDownload,
 .ws-overlay.minimized #wsMinimize { display: none; }
@@ -4578,13 +4619,56 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
    ================================================ */
 
 /* Resumable "new case" draft banner */
-.case-draft-banner {
-    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
-    background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: 0.7rem;
-    padding: 0.65rem 0.9rem; margin-bottom: 0.75rem; font-size: 0.85rem; color: #44403c;
+/* Docked "new case" draft pill — bottom-right. Styled identically to the
+   .ws-overlay.minimized template-draft pill (badge + title + window button)
+   and sits to its LEFT so the two can coexist; when the template pill isn't
+   shown it takes the rightmost slot. */
+.case-draft-pill {
+    position: fixed;
+    inset: auto 1.5rem 0 auto;
+    z-index: 60;
+    max-width: calc(100vw - 3rem);
+    background: #ffffff;
+    border: 1px solid #e0dbd4; border-bottom: none;
+    border-radius: 0.55rem 0.55rem 0 0;
+    box-shadow: 0 -2px 18px rgba(28, 25, 23, 0.18);
+    overflow: hidden;
 }
-.case-draft-banner-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
-[data-theme="dark"] .case-draft-banner { color: #ededf0; }
+/* When the template-draft pill is docked, slide this one to its left. */
+body:has(#useWorkspace.minimized) .case-draft-pill {
+    right: calc(1.5rem + 17rem + 0.6rem);
+}
+.case-draft-pill-bar {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.4rem 0.55rem 0.4rem 0.7rem;
+    cursor: pointer;
+}
+.case-draft-pill-badge {
+    flex-shrink: 0;
+    font-size: 0.625rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.03em;
+    padding: 0.12rem 0.4rem; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent);
+    border: 1px solid var(--accent-border); white-space: nowrap;
+}
+.case-draft-pill-title {
+    font-size: 0.8rem; font-weight: 600; color: #1c1917;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.case-draft-pill-close {
+    width: 1.6rem; height: 1.6rem;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: none; background: transparent; color: #78716c;
+    border-radius: 0.4rem; cursor: pointer; flex-shrink: 0;
+}
+.case-draft-pill-close:hover { background: #f0efed; color: #1c1917; }
+[data-theme="dark"] .case-draft-pill { background: #111113; border-color: #3c3c44; box-shadow: 0 -2px 18px rgba(0,0,0,0.5); }
+[data-theme="dark"] .case-draft-pill-title { color: #ededf0; }
+[data-theme="dark"] .case-draft-pill-close { color: #9898a6; }
+[data-theme="dark"] .case-draft-pill-close:hover { background: #2b2b31; color: #ededf0; }
+
+/* Unify both docked pills to the "new case" pill's background colour. */
+[data-theme="dark"] .ws-overlay.minimized .ws-bar { background: #111113; }
 
 /* Tabs: active / archive */
 .case-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; }
@@ -4779,8 +4863,27 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .case-party-row--opp .party-name   { flex: 1 1 auto; min-width: 0; }
 .case-party-row--opp .party-role   { flex: 0 0 11rem; }
 .case-party-group { display: flex; flex-direction: column; gap: 0.35rem; }
-.case-party-subrow { display: flex; gap: 0.4rem; padding-left: 1.6rem; border-left: 2px solid var(--accent-border); margin-left: 0.3rem; }
+.case-party-subrow { display: flex; gap: 0.4rem; margin-top: 0.45rem; margin-left: 0.1rem; padding-left: 0.75rem; border-left: 2px solid rgba(100, 116, 139, 0.35); }
 .case-party-subrow .party-representative { flex: 1 1 auto; min-width: 0; }
+[data-theme="dark"] .case-party-subrow { border-left-color: rgba(148, 163, 184, 0.4); }
+
+/* ============================================================
+   Side-coded party cards (Наша / Спротивна странка)
+   Each party is a card with a colored left edge: steel-blue for
+   our side, amber for the opposing side, so the two read apart.
+   ============================================================ */
+.case-party-row--client,
+.case-party-group {
+    border: 1px solid #e7e1d8;
+    border-left: 3px solid var(--side-accent);
+    border-radius: 0.6rem;
+    background: var(--side-tint);
+    padding: 0.6rem 0.7rem;
+}
+.case-party-row--client { --side-accent: #336699; --side-tint: #f4f8fb; }
+.case-party-group       { --side-accent: #64748b; --side-tint: #f3f4f6; }
+[data-theme="dark"] .case-party-row--client { --side-accent: #5a85b3; --side-tint: #1d2530; border-color: #34343c; }
+[data-theme="dark"] .case-party-group       { --side-accent: #94a3b8; --side-tint: #262830; border-color: #34343c; }
 .party-new-client, .party-remove {
     flex-shrink: 0; width: 2.2rem; height: 2.2rem;
     display: inline-flex; align-items: center; justify-content: center;
@@ -5370,6 +5473,14 @@ a.crumb:hover, button.crumb:hover { color: #57534e; background: #f0efed; }
 .case-subgroup + .case-subgroup { border-top: 1px solid #efe9df; margin-top: 0.25rem; }
 .case-subhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.6rem; }
 .case-subhead-title { font-size: 0.86rem; font-weight: 700; color: #44403c; }                     /* medium */
+.case-subhead-title::before {
+    content: ''; display: inline-block; width: 0.5rem; height: 0.5rem;
+    border-radius: 50%; margin-right: 0.45rem; vertical-align: middle;
+}
+.case-subhead-title--client::before   { background: #336699; }
+.case-subhead-title--opponent::before { background: #64748b; }
+[data-theme="dark"] .case-subhead-title--client::before   { background: #5a85b3; }
+[data-theme="dark"] .case-subhead-title--opponent::before { background: #94a3b8; }
 .case-subhead-desc { display: block; font-size: 0.72rem; color: #a8a29e; font-weight: 400; margin-top: 0.1rem; }  /* small */
 
 /* Inputs sit on the tinted card → keep them crisp white */

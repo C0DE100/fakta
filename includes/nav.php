@@ -122,6 +122,8 @@ window.FAKTA_CSRF = <?= json_encode(function_exists('fakta_csrf') ? fakta_csrf()
 <script src="js/csrf.js" defer></script>
 <!-- Global toast + confirm dialog helpers (window.toast / window.confirmDialog) -->
 <script src="js/toast.js" defer></script>
+<!-- Global "нов предмет" draft pill, docked on every page -->
+<script src="js/case-draft.js" defer></script>
 <!-- Global "Користи шаблон" workspace, docked on every page -->
 <script src="js/draft-workspace.js" defer></script>
 <!-- Notification bell (top-nav) -->

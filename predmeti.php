@@ -35,15 +35,6 @@ $canManage = current_role() !== 'praktikant';
             <p class="text-sm text-slate-400 mt-1">Список на сите предмети на канцеларијата</p>
         </div>
 
-        <!-- Resumable draft of an unfinished "new case" (saved to localStorage on close) -->
-        <div id="caseDraftBanner" class="case-draft-banner" style="display:none">
-            <span>Имате недовршен предмет во подготовка.</span>
-            <div class="case-draft-banner-actions">
-                <button type="button" id="caseDraftResume" class="btn-secondary">Продолжи</button>
-                <button type="button" id="caseDraftDiscard" class="btn-secondary btn-secondary--danger">Отфрли</button>
-            </div>
-        </div>
-
         <!-- Tabs: active / archived -->
         <div class="case-tabs" id="caseTabs">
             <button class="case-tab is-active" data-status="active">Активни</button>

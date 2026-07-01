@@ -116,4 +116,30 @@
 
     window.toast = toast;
     window.confirmDialog = confirmDialog;
+
+    /* ------------------------------------------------------------
+       Backdrop-click guard (app-wide)
+       ------------------------------------------------------------
+       Modals close when a click lands on their backdrop (handlers
+       across the app test `e.target === overlay`). But selecting text
+       inside a dialog often ends with the mouse released on the
+       backdrop, which the browser reports as a click on the overlay —
+       closing the modal by mistake.
+
+       Record where the mouse went DOWN; if a click reaches a backdrop
+       but the press did NOT start on that same backdrop (i.e. it began
+       inside the dialog and was dragged out), swallow it in the capture
+       phase so the per-modal close handlers never run. A real backdrop
+       click — press AND release on the backdrop — still closes.
+       ------------------------------------------------------------ */
+    var BACKDROPS = '.modal-overlay, .confirm-overlay';
+    var downEl = null;
+    document.addEventListener('mousedown', function (e) { downEl = e.target; }, true);
+    document.addEventListener('click', function (e) {
+        var t = e.target;
+        if (!t || !t.matches || !t.matches(BACKDROPS)) return;
+        if (downEl !== t) {            // drag started inside the dialog → not a real backdrop click
+            e.stopImmediatePropagation();
+        }
+    }, true);
 }());
