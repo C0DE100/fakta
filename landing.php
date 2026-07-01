@@ -170,7 +170,6 @@ $loginUrl = fakta_url('login.php');
     </style>
 </head>
 <body>
-    <h1>TEST from branch test2</h1>
     <div class="wrap">
         <header class="topbar">
             <div class="brand">
